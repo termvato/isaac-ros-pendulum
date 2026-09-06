@@ -1,0 +1,16 @@
+build/
+install/
+log/
+
+# Private planning notes, never published
+SETUP.md
+motor-dyno-concept.md
+memory/
+
+# Python
+__pycache__/
+*.pyc
+
+# ROS bags (generated, can be large — decide per-bag whether to keep)
+*.bag
+rosbag2_*/
