@@ -14,3 +14,4 @@ __pycache__/
 # ROS bags (generated, can be large — decide per-bag whether to keep)
 *.bag
 rosbag2_*/
+CLAUDE.md
