@@ -1,0 +1,55 @@
+<robot name="pendulum">
+  <material name="blue">
+    <color rgba="0 0 0.8 1"/>
+  </material>
+
+  <link name="base_link"/>
+
+  <link name="body">
+    <visual>
+      <geometry>
+        <box size="0.02 0.02 0.30"/>
+      </geometry>
+      <material name="blue"/>
+      <origin xyz=" 0 0 0.15" rpy="0 0 0"/>
+    </visual>
+
+    <inertial>
+      <mass value="0.03"/>
+      <origin xyz=" 0 0 0.15" rpy="0 0 0"/>
+      <inertia ixx="2.26e-4"  iyy="2.26e-4"  izz="2.0e-6" ixy="0"  ixz="0"  iyz="0"/>
+    </inertial>
+  </link>
+
+  <link name="arm">
+    <visual>
+      <geometry>
+        <cylinder length="0.15" radius="0.01"/>
+      </geometry>
+      <origin xyz=" 0 0.02 0" rpy="0 0 0"/>
+    </visual>
+
+    <inertial>
+      <mass value="0.01"/>
+      <origin xyz=" 0 0.02 0" rpy="0 0 0"/>
+      <inertia ixx="1.90e-5"  iyy="1.90e-5"  izz="5.0e-7" ixy="0"  ixz="0"  iyz="0"/>
+    </inertial>
+  </link>
+
+  <joint name="body_arm" type="continuous">
+    <parent link="body"/>
+    <child link="arm"/>
+    <axis xyz="0 1 0" />
+    <origin xyz="0 0 0.3" rpy="0 0 0"/>
+    <limit effort="10.0" velocity="10.0"/>
+  </joint>
+
+  <joint name="base_body" type="revolute">
+    <parent link="base_link"/>
+    <child link="body"/>
+    <axis xyz="0 1 0" />
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <limit lower="-1.5" upper="1.5" effort="10.0" velocity="10.0"/>
+  </joint>
+
+</robot>
