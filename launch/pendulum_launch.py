@@ -11,7 +11,6 @@ here = os.path.dirname(os.path.realpath(__file__))
 # Build the URDF path relative to that folder rather than hardcoding an
 # absolute path. Clone the repo somewhere else and this still resolves.
 # os.path.join handles the separator so you never glue strings with "/".
-# NOTE: this assumes body.urdf sits NEXT TO this file. It currently does not.
 urdf_path = os.path.join(here, '..', 'urdf', 'body.urdf')
 
 # robot_state_publisher wants the URDF's TEXT, not its path, so read the file.
@@ -48,8 +47,6 @@ def generate_launch_description():
             # warn silences this node's chatty INFO output.
             ros_arguments=['--log-level', 'warn']
         ),
-        # Visualisation. Starts with default config, so Fixed Frame is 'map'
-        # and there is no RobotModel display until you add one by hand.
         Node(
             package='rviz2',
             executable='rviz2',
