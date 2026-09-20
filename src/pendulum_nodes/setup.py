@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='termvato',
     maintainer_email='inasaridzevato@gmail.com',
-    description='implementing a periodic joint input for a disturbance effect that a controller will try to fix',
+    description='implementing a periodic joint input for a disturbance effect that a controller will try to fix. Added the controller now that is linked to an Isaacsim plant with the loaded urdf.',
     license='MIT',
     extras_require={
         'test': [
@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'pendulum_pub = pendulum_nodes.pendulum_pub:main',
+            'pendulum_controller = pendulum_nodes.pendulum_controller:main',
         ],
     },
 )
