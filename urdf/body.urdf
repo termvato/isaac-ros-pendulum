@@ -41,7 +41,7 @@
     <child link="arm"/>
     <axis xyz="0 1 0" />
     <origin xyz="0 0 0.3" rpy="0 0 0"/>
-    <limit effort="10.0" velocity="10.0"/>
+    <limit effort="10.0" velocity="100.0"/>
   </joint>
 
   <joint name="base_body" type="revolute">
