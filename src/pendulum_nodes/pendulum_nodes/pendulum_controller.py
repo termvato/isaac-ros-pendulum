@@ -10,19 +10,26 @@ class PendulumController(Node):
         super().__init__('pendulum_controller')
         self.latest_state = None
 
+        self.declare_parameter('max_torque', float('inf'))
+        self.max_torque = self.get_parameter('max_torque').value
+
         # LQR gains, derived in LQR_example.py from the linearised model about
         # upright. State is x = [theta_base, omega_base, omega_arm], input is the
         # torque on body_arm. Control law is u = -K x; the signs below already
         # absorb that negation, since every entry of K came out negative.
-        #   Q from Bryson's rule (budgets: 0.785 rad, pi rad/s, 5 rad/s), R = 1e6.
-        # Closed-loop poles: -212.8 and -6.36 +/- 0.04j, so tau_c = 0.157 s.
+        #   Q from Bryson's rule (budgets: 0.785 rad, pi rad/s, 5 rad/s), R = 1e5.
+        # Closed-loop poles: -33.7 and -6.36 +/- 0.04j, so tau_c = 0.157 s.
         # Region of attraction is limited by arm saturation, not by gains:
-        # theta_base must stay under ~0.16 rad or the arm hits its 100 rad/s limit.
-        self.k_theta_base = 9.16291716e-01
-        self.k_omega_base = 1.43911551e-01
-        self.k_omega_arm = 6.32455532e-04
+        # saturation starts at 0.079 rad (4.5 deg);
+        # recovery still succeeds to ~0.142 rad (8.2 deg)
+        self.declare_parameter('k_theta_base', 9.16291716e-01)
+        self.k_theta_base = self.get_parameter('k_theta_base').value
+        self.declare_parameter('k_w_base', 1.43911551e-01)
+        self.k_w_base = self.get_parameter('k_w_base').value
+        self.declare_parameter('k_w_arm', 6.32455532e-04)
+        self.k_w_arm = self.get_parameter('k_w_arm').value
 
-        self.max_age = 0.05 #to match with QoS? i know i dont need to but idk any other reason.
+        self.max_age = 0.05 
 
         self.publisher_ = self.create_publisher(JointState, 'joint_command', 10)
         timer_period = 1.0/120.0  # 120Hz
@@ -64,8 +71,12 @@ class PendulumController(Node):
             wa=state.velocity[state.name.index('body_arm')]
 
             u = (self.k_theta_base * Ob
-                + self.k_omega_base * wb
-                + self.k_omega_arm * wa)
+                + self.k_w_base * wb
+                + self.k_w_arm * wa)
+            
+            
+            u = max(-self.max_torque, min(self.max_torque, u)) #limiting the torque
+            
 
             joints.effort =[u]
 
