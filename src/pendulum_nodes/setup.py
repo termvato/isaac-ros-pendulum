@@ -24,7 +24,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'pendulum_pub = pendulum_nodes.pendulum_pub:main',
             'pendulum_controller = pendulum_nodes.pendulum_controller:main',
         ],
     },
