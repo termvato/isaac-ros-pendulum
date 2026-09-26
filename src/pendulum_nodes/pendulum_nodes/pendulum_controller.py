@@ -13,7 +13,7 @@ class PendulumController(Node):
         self.declare_parameter('max_torque', float('inf'))
         self.max_torque = self.get_parameter('max_torque').value
 
-        # LQR gains, derived in LQR_example.py from the linearised model about
+        # LQR gains, derived in analysis/lqr_design.py from the linearised model about
         # upright. State is x = [theta_base, omega_base, omega_arm], input is the
         # torque on body_arm. Control law is u = -K x; the signs below already
         # absorb that negation, since every entry of K came out negative.
