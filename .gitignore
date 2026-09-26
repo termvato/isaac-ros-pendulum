@@ -2,16 +2,14 @@ build/
 install/
 log/
 
-# Private planning notes, never published
-SETUP.md
-motor-dyno-concept.md
+# Local notes
+CLAUDE.md
 memory/
 
 # Python
 __pycache__/
 *.pyc
 
-# ROS bags (generated, can be large — decide per-bag whether to keep)
+# ROS bags outside bags/ are scratch runs
 *.bag
 rosbag2_*/
-CLAUDE.md
