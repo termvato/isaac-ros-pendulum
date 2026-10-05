@@ -121,6 +121,30 @@ it, and is not a region of attraction at all. PD also settles the body faster (0
 2.4 N.m, and Isaac applied it without complaint, which is why the clamp has to live in the
 controller.
 
+### Bisected boundary
+
+`isaac/harness.py` replaces the hand-typed sweep: it sets the lean, runs a 10 s trial, judges
+it, and bisects to 0.05 deg. Every trial starts from rest (both joint velocities zeroed), so
+no arm speed carries over from the last one. **Recovered** is stricter than "did not fall":
+the body must be within 0.5 deg of upright **and the arm below 1 rad/s** at the end, because a
+real pendulum gets pushed again and an arm left spinning has less headroom for the next push.
+
+| Controller | Torque limit | Recovers | Fails | Repeat agrees |
+|---|---|---|---|---|
+| LQR | 0.025 N.m | 7.031 deg | 7.078 deg | yes |
+
+This sits inside the hand sweep's gap (7.0 deg recovered, 7.5 deg fell), and every recovery
+ended with the arm below 0.1 rad/s, so the despin requirement cost LQR nothing. The bracket
+ends gave the same result when rerun, so with identical starting states the boundary is
+sharp. Per-trial data: `results/bisect_lqr_0p025.csv`.
+
+**Update rate is part of the controller.** Isaac Sim's standalone app steps 1/60 s frames by
+default, which delivered state to the controller at 60 Hz instead of 240 Hz. At that rate the
+same LQR, with the same 0.025 N.m clamp, **fell from 3 deg**. Nothing reported an error; the
+harness now pins one frame to one 240 Hz physics step, and starts every bisection with a 3 deg
+must-recover / 15 deg must-fall sanity pair so a misconfigured run aborts instead of
+producing a number.
+
 ### Timing, sim versus hardware
 
 In sim time the loop is exact: `/joint_states` arrives every 4.167 ms and `/joint_command`
@@ -187,11 +211,31 @@ source install/setup.bash
    (default 100 rad/s). Neither limit is recorded in the bag, so both are passed in. To
    see the published results, point it at the bags in `bags/`.
 
+### Automated bisection
+
+Runs Isaac Sim headless and finds one controller's boundary in about two minutes.
+
+```bash
+# terminal 1: the controller under test, exactly as above
+ros2 run pendulum_nodes pendulum_controller --ros-args -p use_sim_time:=true -p max_torque:=0.025
+# terminal 2: the harness
+./isaac/run_harness.sh --label lqr_0p025          # add --gui to watch
+```
+
+The result lands in `results/bisect_<label>.csv`. `run_harness.sh` launches the script with a
+clean environment pointed at Isaac Sim's bundled ROS 2 libraries: the harness itself uses
+`rclpy` (to check the controller is publishing), and system Jazzy's `rclpy` is built for
+Python 3.12 while Isaac runs 3.11. The controller still runs on system ROS and connects
+normally. The harness only plays the plant, sets the initial lean and judges the outcome; the
+controller is an ordinary ROS 2 node and does not know it is being tested.
+
 ### Metric definitions
 
 - **Disturbance:** a `base_body` jump of more than 2 deg in one physics step. Physics alone
   moves the body at most 1.6 deg per step, during a fall.
 - **Fell:** `|theta|` exceeds 45 deg.
+- **Recovered (harness):** did not fall, and after 10 s of sim time `|theta| < 0.5 deg` and
+  `|omega_arm| < 1 rad/s`.
 - **Settling time:** time from the disturbance until `theta` enters, and never again leaves,
   +/-2% of the initial lean, in sim seconds.
 - **Saturation time:** total sim time above 99% of the limit (arm speed or torque).
@@ -205,6 +249,9 @@ analysis/bag_reader.py        bag -> per-disturbance metrics table
 analysis/lqr_design.py        LQR gain design from the linearised model
 bags/                         the four sweeps in the results table
 isaac/first_pendulum.usd      Isaac stage: physics, drives, ROS 2 OmniGraph
+isaac/harness.py              headless Isaac Sim: set lean, judge trial, bisect boundary
+isaac/run_harness.sh          launches the harness on Isaac's bundled ROS 2 libraries
+results/                      bisection CSVs, one per controller and torque limit
 src/pendulum_nodes/           the controller node
 urdf/body.urdf                pendulum description (masses, inertias, limits)
 urdf/body/                    URDF imported into USD by Isaac, referenced by the stage
@@ -214,16 +261,19 @@ rviz/                         RViz config
 
 ## Limitations and next steps
 
-- **Disturbances are set by hand** in the Isaac GUI. Next: an OmniGraph node that sets
-  `base_body` angle and velocity from a ROS topic, so a script can run the whole sweep.
+- **The bagged sweeps were set by hand** in the Isaac GUI; the harness now automates the
+  boundary search, but so far only LQR at 0.025 N.m has been bisected.
 - **The ROS interface lives inside a binary `.usd`.** It should be exported as a Python graph
   script so it can be read and diffed.
 - **No Isaac-side watchdog.** If the controller dies, Isaac keeps applying its last command.
 - **The replay launch file is for bags, not live runs.** Run alongside Isaac, the bag and
   Isaac would both publish `/joint_states` and `/clock`.
-- **One run per torque limit, at 0.5 deg resolution.** The failure boundaries are not
-  bisected, and an earlier run at 0.025 N.m fell at 6.9 deg where this one recovered at
-  7.0 deg, so the boundary is not sharp to within a few tenths of a degree.
+- **The bagged sweeps are one run per torque limit at 0.5 deg resolution.** An earlier hand
+  run at 0.025 N.m fell at 6.9 deg; the bisected boundary is 7.03 to 7.08 deg and repeatable,
+  so that disagreement most likely came from un-reset state between hand-set disturbances.
+- **In progress: a learned policy against LQR.** PPO trained in Isaac Lab on the same plant,
+  torque clamp and arm-speed limit, deployed as a ROS 2 node and bisected with the same
+  harness and the same recovery definition.
 - **The model matrices in `lqr_design.py` are typed in by hand** rather than computed from
   the URDF.
 - **Sim only.** No hardware results yet.
