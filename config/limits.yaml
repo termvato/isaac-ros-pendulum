@@ -1,0 +1,6 @@
+# Actuator limits shared by every controller (LQR node, policy node) and the Isaac Lab env.
+# ROS param format, so nodes load it with --ros-args --params-file config/limits.yaml.
+# The plant itself (inertias, the 100 rad/s arm speed limit) lives in urdf/body.urdf, not here.
+/**:
+  ros__parameters:
+    max_torque: 0.025  # N.m, symmetric clamp on body_arm effort
