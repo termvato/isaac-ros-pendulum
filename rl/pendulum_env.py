@@ -35,10 +35,10 @@ PENDULUM_CFG = ArticulationCfg(
         # importer adds a PD drive to every joint; zero it so nothing holds the body up
         joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
             gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0.0, damping=0.0)
-        ),
+        ),  # belt and braces: the actuator cfg below zeroes these again at sim start
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             max_angular_velocity=1.0e4,  # deg/s; keep PhysX's body cap above the 100 rad/s joint limit
-        ),
+        ),  # world-frame cap per body, not the motor limit; arm world speed = body + arm, so 100 rad/s here would bind early
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.0), joint_pos={"base_body": 0.0, "body_arm": 0.0}
@@ -51,7 +51,7 @@ PENDULUM_CFG = ArticulationCfg(
         # passive: zero effort limit, so nothing can ever push base_body
         "base": ImplicitActuatorCfg(
             joint_names_expr=["base_body"], effort_limit_sim=0.0, stiffness=0.0, damping=0.0
-        ),
+        ),  # effort limit is a magnitude: PhysX clamps to [-limit, +limit], so 0 blocks both directions
     },
 )
 
@@ -62,15 +62,15 @@ class PendulumEnvCfg(DirectRLEnvCfg):
     decimation = 2
     episode_length_s = 10.0
     action_scale = MAX_TORQUE  # [N.m] per unit action
-    action_space = 1
+    action_space = 1  # one commanded value: arm torque
     observation_space = 3  # theta, theta_dot, w_arm
-    state_space = 0
+    state_space = 0  # no privileged critic inputs; critic sees the same 3 obs as the actor
 
     # simulation
     sim: SimulationCfg = SimulationCfg(dt=1 / 240, render_interval=decimation)
 
     # robot
-    robot_cfg: ArticulationCfg = PENDULUM_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = PENDULUM_CFG.replace(prim_path="/World/envs/env_.*/Robot")  # copy with one robot per env_N
     base_dof_name = "base_body"
     arm_dof_name = "body_arm"
 
@@ -81,13 +81,13 @@ class PendulumEnvCfg(DirectRLEnvCfg):
 
     # reset
     initial_theta_range = [-12.0 * DEG, 12.0 * DEG]  # [rad]
-    initial_vel_range = [-0.1, 0.1]  # [rad/s], both joints
+    initial_vel_range = [-0.1, 0.1]  # [rad/s], both joints; training only, the harness evaluates from rest
     max_theta = 15.0 * DEG  # training fall threshold [rad]; evaluation uses 45 deg
 
     # reward
     theta_width = 6.0 * DEG  # width of the upright bell [rad]
     despin_gate_width = 2.0 * DEG  # arm-speed penalty only applies inside this [rad]
-    w_arm_scale = 100.0  # [rad/s]
+    w_arm_scale = 100.0  # [rad/s]; arm speed limit, so (w_arm/scale)^2 is 1 at saturation and c reads as a fraction
     rew_scale_despin = 0.1  # c
     rew_fall = -10.0  # P
 
@@ -150,7 +150,7 @@ class PendulumEnv(DirectRLEnv):
             self.joint_pos[:, self._base_dof_idx[0]],
             self.joint_vel[:, self._arm_dof_idx[0]],
             self.reset_terminated,
-        )
+        )  # one reward per env per policy step; PPO sums them discounted by gamma
         return total_reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
