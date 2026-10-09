@@ -13,3 +13,7 @@ __pycache__/
 # ROS bags outside bags/ are scratch runs
 *.bag
 rosbag2_*/
+
+# Isaac Lab training runs
+logs/
+outputs/
