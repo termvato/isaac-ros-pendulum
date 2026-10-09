@@ -34,3 +34,25 @@ LQR-cost reward (gamma 0.997, seeds 1-3), committed before results, ~12:00:
 > i think the fixed learning rate will produce less crashes as you said.
 
 (No prediction on despin, body boundary or seed spread.)
+
+## Run: current LQR gains (designed for the benchmark plant) on the MRV plant, 8 V motor with torque-speed line on the plant side
+
+> i think it falls from like 2 deg, matching my difficulty with balancing it irl.
+
+## Batch: potential-based arm-speed shaping, k = 0.25 (on top of: fixed LR 1e-3, resets +-8, LQR-cost reward, gamma 0.997), seeds 1-10
+
+> i think 5 out of 10 despin
+
+## Batch: shaping k sweep 0.001 / 0.003 / 0.01 / 0.03, then gated shaping k = 0.25 (gate 2 deg, 0.2 rad/s), seeds 2 3 4
+
+No prediction written (user away; asked for the sweep before leaving). Standing prediction from
+the k = 0.25 batch: 5 of 10 despin.
+
+## Overnight batch: ROS harness on lr_s1 and lr_s10; fixed-LR seeds 11-20 at 500 iterations; fixed-LR seeds 1-10 at 2000 iterations
+
+No prediction written before launch (user asked to run straight away). Asked for: how many of
+20 despin at 500 iterations, how many of 10 at 2000. Record any answer here with its time.
+
+## Overnight part 2: product (DeepMind-style) reward, seeds 1-10, 500 iterations
+
+No prediction written before queuing. Asked for: how many of 10 despin.

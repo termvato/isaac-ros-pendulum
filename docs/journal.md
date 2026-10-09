@@ -154,3 +154,100 @@ What happened:
 - **Reading:** Block, Astrom and Spong, *The Reaction Wheel Pendulum* (2007) covers this
   device's classical control (friction, saturation, swing-up); no RL. Ng, Harada and Russell
   (1999) for reward shaping that provably leaves the best policy unchanged.
+- **Fixed learning rate 1e-3, resets +-8, 10 seeds** (`results/figures/training_lr_s1-5.png`,
+  `seeds_r12_r8_lr.png`). Prediction ("fewer crashes") right: no crash in any curve. Learning
+  starts later (iteration ~150-200 vs ~115) and is still rising at 500, so 500 may now be too
+  short. Every seed balances (none at 0), body 4.0 to 7.4 deg (five at 7.2 to 7.4). **First
+  policies that meet the full definition:** seed 1 holds 7.4 deg and parks at -0.4 rad/s, seed 10
+  holds 7.2 deg at -0.7 rad/s, both under the 1 rad/s bar (Lab only, ROS check owed). The other
+  parked speeds spread wider again (-28 to +33). Seed 5's export first failed on a network fetch
+  for a default Isaac asset; re-exported.
+- **MRV limit and the bench contradiction.** COM measured at ~210 mm above the foot pivot. With
+  the 8 V motor line (torque falls to 0 at no-load, up to 2x stall braking), the linear-program
+  limit is 2.8 deg from rest and 4.4 deg with the arm pre-spun the bench way. Re-enacted in Isaac
+  Lab (`rl/mrv_bench.py`, full nonlinear PhysX, open-loop full reverse): 2.75 and 4.25 deg. The
+  two methods agree, so the maths is not the problem. The bench test recovered ~12 deg (jig with
+  bearings at the foot, protractor, one arm, released at rest). 12.4 deg is the momentum ceiling
+  for an infinitely strong motor (I_a x 117 rad/s / sqrt(mgl x I_p)), so no motor torque explains
+  it. Open. Remaining suspects: something outside the model helping, the arm inertia, the angle.
+  (The re-enactment's first scoring counted traces after the env's auto-reset as recoveries and
+  said 14 deg; fixed to stop at the first fall. Same bug as lab_eval on 10-09 morning.)
+- **Potential-based arm-speed shaping, k = 0.25: failed, stopped after seed 1.** The policy never
+  learned to balance (episodes ~45 steps all 500 iterations) and falls from every lean with the
+  motor nearly idle. Mechanism: the shaping charges k * w^2 the moment the arm spins up, and
+  every catch needs a spin to ~60 rad/s, so k = 0.25 bills ~900 up front against an alive bonus
+  of 1 per step. The refund comes later as the arm drains, but an untrained policy never gets
+  that far, so it learns that using the arm is expensive and stops using it. Invariance of the
+  best policy (Ng 1999) says nothing about whether training can find it. Prediction (5 of 10
+  despin) not tested; 0 of 1.
+- **Shaping sweep: no k works** (`results/figures/seeds_shaping_sweep.png`, seeds 2-4, which did
+  not despin unshaped). k = 0.001 and 0.003: no despin, parked speeds as scattered as before, and
+  seed 3 holds only 3-4 deg (6.5 unshaped). k = 0.01 and 0.03 (one seed each, the rest cut to
+  save time): 5 and 4 deg, still parked at ~15 rad/s. The body boundary falls as k rises and the
+  arm never gets closer to zero: any up-front charge for arm speed weakens the catch before it
+  buys any despin.
+- **Gated shaping (k = 0.25, active within ~2 deg and 0.2 rad/s of upright and still): never
+  learns to balance, all 3 seeds.** My gate design was wrong. A gated potential is lowest
+  (most negative) when the body is upright, still and the arm is spinning, which is exactly where
+  every catch ends. Leaving that state, by leaning away, raises the potential back towards 0 and
+  pays up to +900. So the shaping rewarded tipping over with a spinning arm. Still policy-
+  invariant in theory; in training it is a large signal pointing the wrong way.
+- **Conclusion for shaping on arm speed:** the catch must spin the arm up, so any potential in
+  w_arm either bills the catch (ungated) or rewards abandoning upright (gated). Dropped.
+
+## 2026-10-09 evening: shaping dropped, overnight batch
+
+- **His read: PPO looks like the wrong tool for despin.** Agreed as a view, with a caveat: the
+  failure is specific. PPO matches LQR and nearly reaches the physical limit on the catch. What it
+  cannot do reliably is finish the despin, because the arm parks on stable speeds that cost almost
+  nothing per step, and draining them pays off seconds later, beyond what gamma 0.997
+  (horizon ~2.8 s) values. Next method is for after the statement, not before.
+- **His idea: tie arm and recovery into one reward instead of separate terms.** Research found:
+  - DeepMind Control Suite (Tassa et al. 2018) multiplies terms: cartpole is
+    `upright * centered * small_control * small_velocity`, each a tolerance in [0, 1]. A product is
+    a soft AND: no term can be traded off against another.
+  - Additive rewards let one term be ignored if others compensate; a geometric mean of terms
+    reportedly gave better training and lower variance (quadrotor control, arXiv 2012.06656,
+    from the abstract-level summary, not read in full).
+  - Constraints as Terminations (CaT, Chane-Sane et al. 2024, LAAS): treat "arm despun by the end"
+    as a constraint, violations raise a termination probability, works with plain PPO.
+  - Risk for this plant: a hard product `bell(theta) * bell(w_arm)` scores every catch near zero,
+    since each catch must spin the arm, the same trap as ungated shaping. dm_control softens it
+    with factors like `(1 + small_control) / 2`, so the worst a term can do is halve the reward.
+    Not tried. Recorded as the first candidate if the RL work resumes.
+- **Overnight batch launched 20:20 UTC, no reward changes** (`queue11.sh` in the scratchpad):
+  ROS harness bisection of lr_s1 and lr_s10 (the two that despun in Lab); fixed-LR seeds 11-20 at
+  500 iterations (despin rate out of 20); seeds 1-10 at 2000 iterations (does longer training
+  leave the parking habit). No prediction written before launch.
+- **ROS harness, the two despinning policies: both despin, neither beats LQR.** lr_s1: recovers
+  6.98, fails 7.03 deg, arm -0.3 to -0.4 rad/s at 10 s. lr_s10: about 6.33-6.4 deg, arm -0.78 rad/s.
+  The repeats flipped on both, so the edges are fuzzy at the 0.05 deg scale. LQR on the same
+  harness: 7.03 / 7.08. In Lab the same policies held 7.4 and 7.2. **This is the first Lab-vs-ROS
+  boundary comparison for PPO.** The earlier lqrrew seeds only ran the 3 deg sanity check in ROS,
+  which they failed on despin. Gap 0.4-0.8 deg, unexplained. Hypothesis, not tested: the ROS loop adds latency
+  (a timer node acting on the last stashed state) that Lab's in-loop evaluation does not have, and
+  a policy riding the physical limit loses more to it than LQR does. Cheapest test: LQR in Lab.
+  If it also shows ~7.4, the comparison is like for like in each simulator and PPO ties LQR.
+- **LQR in Lab: 7.46 deg, identical to PPO's best. Correction to everything I said about PPO
+  "reaching 99% against LQR's 94%".** That compared PPO in Lab against LQR through ROS. Like for
+  like (`rl/lqr_policy.py` exports the LQR law as a TorchScript policy, run by the same
+  `rl/lab_eval.py`, fine grid 7.2-7.58 deg): LQR holds 7.46 and falls at 7.48; lr_s1 holds 7.46 and
+  falls at 7.48; lr_s10 holds 7.3 and falls at 7.4. The physical limit is 7.48. So in Lab LQR is
+  already at the limit, and the best PPO seed ties it to within 0.02 deg. Through ROS both lose
+  ~0.45 deg (LQR 7.03, lr_s1 6.98), consistent with the loop latency hypothesis, untested.
+  `analysis/plot_seeds.py`'s LQR line is now the Lab number.
+- **Statement result, now:** under identical limits, PPO matched LQR and did not beat it, because
+  LQR on this plant already recovers 99.7% of the physically possible lean (LP bound). Nothing is
+  left to win on the catch; the only open question was despin, which PPO does in 2 of 10 seeds.
+- **Product reward added** (`reward_type = "product"`, `rl/rewards.py`): `bell(theta, 6 deg) *
+  (1 + bell(w_arm, 10 rad/s)) / 2`. My parameter calls: arm width 10 rad/s so parking at 30 rad/s
+  pays ~half and despun pays ~all; the (1 + x)/2 floor so a catch at 100 rad/s costs at most half
+  and never zeroes the reward; no control or body-speed term (one change at a time). Queued after
+  the overnight batch as `queue12.sh`, seeds 1-10, 500 iterations, base config otherwise.
+- **Unit tests added** (`tests/`, run with `PYTHONPATH=. ~/isaacsim/python.sh -m pytest tests -q`,
+  14 pass): product reward bounds, floor, multiplicative structure, batch shape; LQR policy gains
+  match `pendulum_controller.py`'s declared defaults (read from its source), torque from
+  limits.yaml, same output as the node's clamp law, TorchScript round trip; plant model
+  reproduces body.urdf's hand-derived A and B and MRV's 358 g / 210 mm. Product reward smoke-tested
+  in Lab at 64 envs, 3 iterations, before queuing; queue12 repeats the smoke test at full scale
+  and aborts if it fails. Unknown `reward_type` values now raise instead of silently using "bell".

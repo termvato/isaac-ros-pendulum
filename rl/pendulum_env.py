@@ -21,6 +21,8 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils import configclass
 from isaaclab.utils.math import sample_uniform
 
+from .rewards import product_reward
+
 REPO = Path(__file__).resolve().parents[1]
 URDF_PATH = str(REPO / "urdf" / "body.urdf")
 with open(REPO / "config" / "limits.yaml") as f:
@@ -86,7 +88,8 @@ class PendulumEnvCfg(DirectRLEnvCfg):
     initial_vel_range = [-0.1, 0.1]  # [rad/s], both joints; training only, the harness evaluates from rest
     max_theta = 15.0 * DEG  # training fall threshold [rad]; evaluation uses 45 deg
 
-    # reward: "lqr" (default since 10-09) or "bell" (the 10-05 hand-made reward, kept to reproduce old runs)
+    # reward: "lqr" (default since 10-09), "bell" (the 10-05 hand-made reward, kept to reproduce old
+    # runs) or "product" (DeepMind Control Suite style, see rl/rewards.py)
     reward_type = "lqr"
     # lqr: r = alive_bonus - lqr_cost_scale * (x'Qx + R u^2), the same Q and R as analysis/lqr_design.py,
     # so PPO and LQR optimise one objective. The bonus makes falling forfeit future reward instead of
@@ -95,7 +98,22 @@ class PendulumEnvCfg(DirectRLEnvCfg):
     lqr_r = 1.0e5  # torque [N.m]
     lqr_cost_scale = 0.005
     alive_bonus = 1.0
-    # bell
+    # potential-based shaping on arm speed (Ng, Harada, Russell 1999), added to either reward:
+    # F = gamma * Phi(s') - Phi(s), Phi = -shaping_k * w_arm^2, Phi = 0 once fallen. Pays for each
+    # drop in arm speed when it happens and charges the same for a rise, so spin-up/spin-down cycles
+    # earn nothing and the best policy is unchanged; only when the reward arrives changes.
+    # 0 = off (every run before 10-09 evening). shaping_gamma must equal the agent's gamma.
+    shaping_k = 0.0
+    shaping_gamma = 0.997
+    # optional gate, still a valid potential (any function of state is): Phi is multiplied by
+    # exp(-(theta/gate_theta)^2) * exp(-(theta_dot/gate_theta_dot)^2), so a moving or leaning body
+    # (the catch) is not billed for spinning the arm up. 0 = no gate on that state.
+    shaping_gate_theta = 0.0  # [rad]
+    shaping_gate_theta_dot = 0.0  # [rad/s]
+    # product: upright(theta, theta_width) * (1 + small(w_arm, product_w_arm_width)) / 2
+    product_w_arm_width = 10.0  # [rad/s]; parked at 30 rad/s pays ~half, despun (< 1) pays ~all
+    product_torque_width = 0.0  # [N.m]; 0 = no control term
+    # bell (theta_width is shared with product)
     theta_width = 6.0 * DEG  # width of the upright bell [rad]
     despin_gate_width = 2.0 * DEG  # arm-speed penalty only applies inside this [rad]
     w_arm_scale = 100.0  # [rad/s]; arm speed limit, so (w_arm/scale)^2 is 1 at saturation and c reads as a fraction
@@ -115,6 +133,7 @@ class PendulumEnv(DirectRLEnv):
 
         self.joint_pos = self.pendulum.data.joint_pos
         self.joint_vel = self.pendulum.data.joint_vel
+        self._prev_phi = self._potential(self.joint_pos, self.joint_vel)  # shaping potential at the last step
 
     def _setup_scene(self):
         self.pendulum = Articulation(self.cfg.robot_cfg)
@@ -152,6 +171,22 @@ class PendulumEnv(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
+        reward = self._base_reward()
+        if self.cfg.shaping_k:
+            phi_next = torch.where(self.reset_terminated, 0.0, self._potential(self.joint_pos, self.joint_vel))
+            reward = reward + self.cfg.shaping_gamma * phi_next - self._prev_phi
+            self._prev_phi = phi_next.clone()  # envs reset this step overwrite theirs in _reset_idx
+        return reward
+
+    def _potential(self, joint_pos: torch.Tensor, joint_vel: torch.Tensor) -> torch.Tensor:
+        phi = -self.cfg.shaping_k * torch.square(joint_vel[:, self._arm_dof_idx[0]])
+        if self.cfg.shaping_gate_theta:
+            phi = phi * torch.exp(-torch.square(joint_pos[:, self._base_dof_idx[0]] / self.cfg.shaping_gate_theta))
+        if self.cfg.shaping_gate_theta_dot:
+            phi = phi * torch.exp(-torch.square(joint_vel[:, self._base_dof_idx[0]] / self.cfg.shaping_gate_theta_dot))
+        return phi
+
+    def _base_reward(self) -> torch.Tensor:
         if self.cfg.reward_type == "lqr":
             q0, q1, q2 = self.cfg.lqr_q
             cost = (
@@ -161,6 +196,17 @@ class PendulumEnv(DirectRLEnv):
                 + self.cfg.lqr_r * torch.square(self.actions[:, 0])  # applied torque, after the clip
             )
             return self.cfg.alive_bonus - self.cfg.lqr_cost_scale * cost
+        if self.cfg.reward_type == "product":
+            return product_reward(
+                self.joint_pos[:, self._base_dof_idx[0]],
+                self.joint_vel[:, self._arm_dof_idx[0]],
+                self.actions[:, 0],
+                self.cfg.theta_width,
+                self.cfg.product_w_arm_width,
+                self.cfg.product_torque_width,
+            )
+        if self.cfg.reward_type != "bell":
+            raise ValueError(f"unknown reward_type {self.cfg.reward_type!r}")
         total_reward = compute_rewards(
             self.cfg.theta_width,
             self.cfg.despin_gate_width,
@@ -205,6 +251,8 @@ class PendulumEnv(DirectRLEnv):
 
         self.joint_pos[env_ids] = joint_pos
         self.joint_vel[env_ids] = joint_vel
+        if hasattr(self, "_prev_phi"):
+            self._prev_phi[env_ids] = self._potential(joint_pos, joint_vel)
 
         self.pendulum.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self.pendulum.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
