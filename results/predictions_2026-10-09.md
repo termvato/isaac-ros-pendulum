@@ -58,3 +58,9 @@ before any training result was seen (2026-10-09 ~20:45 UTC; ROS harness results 
 ## Overnight part 2: product (DeepMind-style) reward, seeds 1-10, 500 iterations
 
 No prediction written before queuing. Asked for: how many of 10 despin.
+
+## Policy probe: torque vs arm speed, body upright and still (not yet run)
+
+> ye i bet its gonna be zero torque at the parked result. Problem is how do we shift it towards zero.
+
+(2026-10-09 ~20:50 UTC, after seeing that each seed parks at the same speed from every start lean.)
