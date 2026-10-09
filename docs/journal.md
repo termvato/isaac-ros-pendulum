@@ -107,3 +107,11 @@ What happened:
 - R sweep for LQR (1e4 to 1e6): boundary 7.0 to 7.08 deg, settling 1.02 to 1.10 s at 6 deg,
   traces nearly identical (`results/figures/recovery_6deg_Rsweep.png`). Saturation decides
   the recovery, not the gains.
+- **LQR-cost reward (gamma 0.997, 5 seeds, plus seed 1 at 2000 iterations): still no despin.**
+  Body holds up to 6.5, 7.4, 4.0, 7.4, 7.2 deg (lower edge of each bracket; 7.4 for the long
+  run); arm parks at +38.7, -18.0, -21.4, +17.2, +13.3 rad/s (-9.9 long). Spread did not
+  shrink; my "a bowl-shaped objective will tighten it" prediction was wrong.
+- 500 iterations had plateaued: the 2000-iteration curve is flat (and noisy) from ~200 on,
+  and its first 500 iterations overlay seed 1's exactly, so training is deterministic per seed.
+- Lab and Isaac Sim via ROS agree for all six policies: end state at 3 deg matches to three
+  figures (e.g. 38.68 vs 38.7 rad/s). The interface claim holds for learned controllers.
