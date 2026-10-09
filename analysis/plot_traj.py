@@ -24,9 +24,14 @@ INK, MUTED, SURFACE = '#0b0b0b', '#52514e', '#fcfcfb'
 def load(path):
     """Return {theta0: {column: [values]}} from one trajectory CSV."""
     trials = defaultdict(lambda: defaultdict(list))
+    finished = set()  # the harness repeats bracket angles; keep the first trial only
     with open(path) as f:
         for row in csv.DictReader(f):
-            trial = trials[float(row['theta0'])]
+            theta0, t = float(row['theta0']), float(row['t'])
+            trial = trials[theta0]
+            if theta0 in finished or (trial['t'] and t < trial['t'][-1]):
+                finished.add(theta0)
+                continue
             for k in ('t', 'theta_deg', 'w_arm', 'effort'):
                 trial[k].append(float(row[k]))
     return trials

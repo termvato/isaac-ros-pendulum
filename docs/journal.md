@@ -29,7 +29,8 @@ is; this file says how it got that way. Newest entries at the bottom.
 - Question: in the speed-saturated regime, does a learned policy (PPO, Isaac Lab) recover
   from larger leans than LQR under identical limits? Recovered means upright **and** arm
   despun at 10 s, for both controllers.
-- Built a bisection harness: LQR at 0.025 N.m recovers 7.03 deg, fails 7.08, deterministic.
+- Built a bisection harness: LQR at 0.025 N.m recovers ~7.0 deg. (Logged at the time as
+  "deterministic"; that was wrong, see 10-09.)
 - Built the Lab env; plant check: free fall to 45 deg in 0.458 s vs 0.454 s by hand.
 - Found Isaac Sim's standalone mode steps physics at 60 Hz by default. LQR fell from 3 deg
   and nothing errored.
@@ -52,8 +53,11 @@ What happened:
 - Seed 1 failed the harness sanity check at 3 deg: body upright to 0.04 deg, arm still at
   58 rad/s after 10 s. It balances but does not despin.
 - Ran the same policy in Lab: identical to three figures (57.7 vs 57.65 rad/s). So the
-  Lab-to-Sim transfer is clean here, and the failure is training, not transfer. Without the
-  despin requirement it holds the body from 9 deg, where LQR falls at 7.08.
+  Lab-to-Sim transfer is clean here, and the failure is training, not transfer.
+- **Retracted the same day:** I first read the Lab run as "PPO holds the body from 9 deg".
+  The graph showed the trace jumping from 45 deg back to 7: the env had auto-reset after the
+  fall and the evaluation kept recording. Fixed; PPO falls from 9 deg too. Lesson: plot
+  before believing a table.
 - **Hidden plant term found.** The body settled at 0.043 deg, not 0, from every start. Cause:
   PhysX applies a default angular damping (drag) to every rigid body, which the URDF never
   mentions. The motor has to push against drag to hold arm speed, its reaction tilts the
@@ -69,3 +73,27 @@ What happened:
   ahead. Testing each separately.
 - Open design question: the despin penalty only applies within 2 deg of upright, which also
   caps how hard the policy can lean to despin. Revisit if the runs above don't fix it.
+- **Results on the corrected plant (seed 1 each):**
+
+  | controller | body recovers to | arm at 10 s |
+  |---|---|---|
+  | LQR (Isaac Sim via ROS) | 7.0 deg (+-0.05, see below) | ~0 rad/s, despun |
+  | PPO baseline (Lab) | 7.4 deg | 49.7 rad/s |
+  | PPO, despin weight doubled (Lab) | 7.4 deg | 45.5 rad/s |
+  | PPO, gamma 0.999 (Lab) | 7.4 deg | 29.6 rad/s |
+
+  None of the policies despins, so under the agreed definition none recovers at all. On the
+  body alone they are 0.4 deg ahead of LQR, but that is Lab against Sim-via-ROS, not yet a
+  fair comparison. All three hit the same 7.4 deg, which fits the 09-25 claim that the
+  boundary is set by the arm speed limit, not by the controller.
+- **Why no despin, from the graph** (`results/figures/recovery_7deg.png`). Every controller
+  pins the arm at 100 rad/s for the same ~0.2 s. Then LQR swings the body ~2.2 deg past
+  vertical and holds it there long enough for gravity to drain the arm: by the momentum
+  budget, final arm speed is proportional to the integral of lean over the recovery, and LQR
+  drives that integral to zero. The policies undershoot less, so the integral stays positive
+  and the arm keeps the rest. Longer horizon (gamma 0.999) undershoots more and keeps less.
+- **LQR's boundary is not deterministic.** At 6.98 deg one trial recovered and its repeat
+  fell; at 7.03 the reverse. The committed 10-05 CSV shows the same flip, so the "repeat
+  agrees" claim in my 10-05 notes was wrong. Likely cause: the ROS timer is not locked to the
+  physics step, so which tick a command lands on depends on wall-clock scheduling. Report the
+  boundary as 7.0 +- 0.05 deg.

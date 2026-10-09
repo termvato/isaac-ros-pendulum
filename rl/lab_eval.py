@@ -49,13 +49,19 @@ obs = env._get_observations()["policy"]
 
 steps = int(cfg.episode_length_s * 120) - 2  # stop before the time-out reset
 rows = []
+# The env auto-resets an env that falls (to a random lean), so stop recording it at its first
+# fall; otherwise the trace jumps back to a new start and looks like a recovery.
+alive = [True] * len(args.angles)
 with torch.no_grad():
     for k in range(steps + 1):
         act = policy(obs)
         torque = (act.clamp(-1.0, 1.0) * cfg.action_scale).squeeze(1).tolist()
-        for a, o, u in zip(args.angles, obs.tolist(), torque):
-            rows.append((a, k / 120, math.degrees(o[0]), o[1], o[2], u))
-        obs = env.step(act)[0]["policy"]
+        for i, (a, o, u) in enumerate(zip(args.angles, obs.tolist(), torque)):
+            if alive[i]:
+                rows.append((a, k / 120, math.degrees(o[0]), o[1], o[2], u))
+        obs, _, fell, _, _ = env.step(act)
+        obs = obs["policy"]
+        alive = [al and not f for al, f in zip(alive, fell.tolist())]
 
 os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
 with open(args.out, "w", newline="") as f:
@@ -64,7 +70,8 @@ with open(args.out, "w", newline="") as f:
     w.writerows(rows)
 for a in args.angles:
     end = [r for r in rows if r[0] == a][-1]
-    print(f"{a:5.1f} deg: end theta {end[2]:+.3f} deg, w_arm {end[4]:+.1f} rad/s")
+    print(f"{a:5.1f} deg: {'FELL' if end[1] < steps / 120 - 1e-6 else 'ok  '} at t={end[1]:.2f} s, "
+          f"theta {end[2]:+.3f} deg, w_arm {end[4]:+.1f} rad/s")
 print(f"wrote {args.out}")
 
 env.close()
