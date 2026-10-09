@@ -1,0 +1,108 @@
+<robot name="mrv">
+  <!-- MRV, one axis, foot pinned to the ground: the same structure as body.urdf (passive
+       base_body pivot at the foot, actuated body_arm reaction arm), with MRV's numbers.
+       Construction, bottom to top: 280 mm leg from the foot; 100 mm cube on the leg, its top face
+       at the top of the leg (leg passes through it), so the cube centre is at 230 mm; the reaction
+       arms on the cube's side faces, at cube-centre height. Pivot and motor axes are URDF y.
+       COM is on the vertical through the pivot (x = 0), as on the real MRV, which balances on
+       its foot; the arms' sideways offsets are kept as inertia only.
+       Sources: Fusion masses and inertias and the Kingly Gear test report (CLAUDE.md "MRV
+       parameters"). Totals: 358.1 g, COM 221 mm above the foot, mgl 0.777 N.m, inertia about
+       the foot 1.93e-2 kg.m^2.
+       Not modelled: reflected rotor inertia, gearbox backlash, motor torque-speed line (the
+       controller and Lab env enforce that, not the URDF). -->
+
+  <material name="body"><color rgba="0.55 0.55 0.6 1"/></material>
+  <material name="leg"><color rgba="0.2 0.2 0.2 1"/></material>
+  <material name="arm"><color rgba="0 0.35 0.8 1"/></material>
+  <material name="arm2"><color rgba="0.5 0.65 0.9 1"/></material>
+  <material name="weight"><color rgba="0.9 0.4 0.1 1"/></material>
+
+  <link name="base_link"/>
+
+  <!-- Everything that rotates with the body about the foot:
+       cube: main body 213.6 g + 2 batteries 13 g = 239.6 g at 230 mm, own Iyy (1/6) m a^2 = 3.99e-4
+       leg: 35.5 g rod 0 to 280 mm, COM 140 mm, own Iyy (1/12) m L^2 = 2.32e-4
+       second arm (spins about x, locked for this axis): 41.5 g on the +x face, plane 108 mm out.
+         Its mass is put on the centreline because Fusion puts the COM at x = y = 0; its 108 mm
+         offset is kept as inertia, m d^2 = 4.84e-4. Own Iyy 2.09e-4 (bar drawn vertical).
+       Combined 316.6 g, COM 219.9 mm; Iyy about that COM 1.580e-3. -->
+  <link name="body">
+    <visual>
+      <origin xyz="0 0 0.23" rpy="0 0 0"/>
+      <geometry><box size="0.1 0.1 0.1"/></geometry>
+      <material name="body"/>
+    </visual>
+    <visual>
+      <origin xyz="0 0 0.14" rpy="0 0 0"/>
+      <!-- drawn at r 9 mm for visibility; the inertia uses the real 6.3 mm rod (radius barely
+           enters a long rod's inertia about a transverse axis) -->
+      <geometry><cylinder length="0.28" radius="0.009"/></geometry>
+      <material name="leg"/>
+    </visual>
+    <visual>
+      <origin xyz="0.108 0 0.23" rpy="0 0 0"/>
+      <geometry><box size="0.008 0.008 0.1585"/></geometry>
+      <material name="arm2"/>
+    </visual>
+    <visual>
+      <origin xyz="0.108 0 0.30925" rpy="0 1.5708 0"/>
+      <geometry><cylinder length="0.02" radius="0.005"/></geometry>
+      <material name="weight"/>
+    </visual>
+    <visual>
+      <origin xyz="0.108 0 0.15075" rpy="0 1.5708 0"/>
+      <geometry><cylinder length="0.02" radius="0.005"/></geometry>
+      <material name="weight"/>
+    </visual>
+    <inertial>
+      <mass value="0.3166"/>
+      <origin xyz="0 0 0.2199" rpy="0 0 0"/>
+      <inertia ixx="1.580e-3" iyy="1.580e-3" izz="6.1e-4" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- The reaction arm: 13.3 g bar + 2 x 14.1 g weights at 79.25 mm, COM on the motor axis.
+       Spin (y): 3.22e-5 bar (Fusion) + 2 m r^2 = 1.771e-4 weights = 2.093e-4.
+       Along the bar (x): 2.6e-6 (Fusion). Third axis (z): 3.41e-5 + 1.771e-4 = 2.112e-4. -->
+  <link name="arm">
+    <visual>
+      <geometry><box size="0.1585 0.008 0.008"/></geometry>
+      <material name="arm"/>
+    </visual>
+    <visual>
+      <origin xyz="0.07925 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder length="0.02" radius="0.005"/></geometry>
+      <material name="weight"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.07925 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder length="0.02" radius="0.005"/></geometry>
+      <material name="weight"/>
+    </visual>
+    <inertial>
+      <mass value="0.0415"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="2.6e-6" iyy="2.093e-4" izz="2.112e-4" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- On the +y face, plane 108 mm out, at cube-centre height. The y offset does not change the
+       dynamics about y. velocity = no-load speed at 8 V (58.7 rad/s); effort = stall torque at
+       8 V (0.0653 N.m), informational only, Isaac does not enforce it. -->
+  <joint name="body_arm" type="continuous">
+    <parent link="body"/>
+    <child link="arm"/>
+    <axis xyz="0 1 0"/>
+    <origin xyz="0 0.108 0.23" rpy="0 0 0"/>
+    <limit effort="0.0653" velocity="58.7"/>
+  </joint>
+
+  <joint name="base_body" type="revolute">
+    <parent link="base_link"/>
+    <child link="body"/>
+    <axis xyz="0 1 0"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <limit lower="-1.5" upper="1.5" effort="10.0" velocity="10.0"/>
+  </joint>
+</robot>

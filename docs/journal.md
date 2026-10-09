@@ -115,3 +115,42 @@ What happened:
   and its first 500 iterations overlay seed 1's exactly, so training is deterministic per seed.
 - Lab and Isaac Sim via ROS agree for all six policies: end state at 3 deg matches to three
   figures (e.g. 38.68 vs 38.7 rad/s). The interface claim holds for learned controllers.
+- **Physical recovery limit: 7.48 deg** (`analysis/recovery_limit.py`). Linear program over all
+  torque sequences at 120 Hz on the linearised plant, |torque| <= 0.025 N.m, |arm| <= 100 rad/s,
+  start from rest, end upright and still. Requiring despin as well costs nothing (still 7.48).
+  Checks: no arm limit gives 19.5 deg (the torque-only bound, by hand 0.025 x 556 / 40.9 rad);
+  doubling torque gives only 8.36 deg (speed-limited, as measured on 09-25). So LQR's 7.0 deg is
+  94% of what is physically possible and PPO seed 1's 7.4 deg is 99%. The most PPO can ever win
+  is ~0.5 deg. Several seeds tying at exactly 7.4 was them hitting the ceiling.
+- Resets narrowed to +-8 deg, seed 1: recovers 7.4 deg, tracks LQR almost exactly, despins by
+  ~1 s, then drifts to a 9.5 rad/s park. Training crashed at iteration ~300: the adaptive
+  learning-rate schedule had climbed to its 0.01 cap, one update broke the critic (value loss
+  5 -> 775), reward fell from ~1100 to -43.
+- **Resets +-8 deg, 10 seeds** (`results/figures/seeds_r12_vs_r8.png`). Parked arm speed
+  tightened from -21..+39 rad/s (5 seeds, +-12) to -3..+10.5 (9 seeds), and the policies now
+  despin then drift to a small park; still 0 of 10 under the 1 rad/s bar (best: +1.1). Body:
+  five seeds at 7.2 to 7.4 deg (at or above LQR), but seed 3 never balances and seed 8 holds only
+  4 deg. Learning curves are not smoother: every seed still crashes and recovers, and seed 3's
+  final iteration lands in a dip. Prediction ("smoother curves") wrong. Seed 8 first died of GPU
+  out-of-memory: export processes ignored SIGTERM and piled up; now killed with -9 as fallback.
+- MRV URDF (`urdf/mrv.urdf`) written from the Fusion numbers. Construction: leg 0 to 280 mm,
+  100 mm cube with its top flush with the leg top (centre 230 mm), arms on the side faces.
+  That puts the COM at 221 mm, not the 135 mm logged on 09-25; Fusion was probably missing
+  masses. mgl 0.777 N.m, inertia about the foot 1.93e-2.
+- **Why training crashes** (`results/figures/training_r8_vs_r12_s1.png`). rsl_rl's "adaptive"
+  schedule raises the learning rate whenever an update changes the policy less than a KL target.
+  A converged policy barely changes, so the rate climbed to its 0.01 cap (10x the start), sat
+  there, and one large update broke the critic. PPO's clip did not stop it: each batch gets 20
+  gradient steps, so at a high rate the policy can still move far. Because training stops at a
+  fixed iteration, each seed is frozen wherever it is in this crash-and-recover cycle, which is
+  a plausible source of the seed spread. Next batch: fixed learning rate 1e-3, one change.
+- **Plant decision.** MRV is not harder to simulate (same three links, two joints, no
+  collisions), so compute is not the reason. The method is developed on the benchmark plant,
+  whose limit is known (7.48 deg), and then applied to MRV, so that each step changes one thing.
+  MRV also needs a motor model whose torque falls with speed before it can be compared fairly.
+- **Considered, not yet tried: residual RL** (Johannink et al. 2018; Silver et al. 2018):
+  torque = LQR + a learned correction, so training starts from a controller that already
+  despins. It would change the question to "can learning extend LQR's boundary?".
+- **Reading:** Block, Astrom and Spong, *The Reaction Wheel Pendulum* (2007) covers this
+  device's classical control (friction, saturation, swing-up); no RL. Ng, Harada and Russell
+  (1999) for reward shaping that provably leaves the best policy unchanged.
