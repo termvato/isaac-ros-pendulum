@@ -50,8 +50,10 @@ the k = 0.25 batch: 5 of 10 despin.
 
 ## Overnight batch: ROS harness on lr_s1 and lr_s10; fixed-LR seeds 11-20 at 500 iterations; fixed-LR seeds 1-10 at 2000 iterations
 
-No prediction written before launch (user asked to run straight away). Asked for: how many of
-20 despin at 500 iterations, how many of 10 at 2000. Record any answer here with its time.
+No prediction written before launch (user asked to run straight away). Given after launch,
+before any training result was seen (2026-10-09 ~20:45 UTC; ROS harness results already known):
+
+> I think we might see one or two more that despin out of luck. Maybe we see a pattern across them.
 
 ## Overnight part 2: product (DeepMind-style) reward, seeds 1-10, 500 iterations
 
