@@ -14,3 +14,10 @@ Reference: LQR at 0.025 N.m recovers 7.031 deg, fails 7.078 deg (harness, 10-05)
 Seed spread, committed 10-09 after seeing seed 1 curves but before any bisection:
 
 > i think the spread between each is going to be around 1 degree.
+
+LQR-cost reward (gamma 0.997, seeds 1-3), committed before results, ~12:00:
+
+> i think yea they beat lqr, if without despin they beat it despin is post the hardest
+> challenge the controller will face and is like cleaning up so to say. [Predicted result:]
+> PPO with LQR's despin rewards reaps the good from both worlds recovering fully from 7.4
+> degrees and despinning the arms

@@ -45,7 +45,7 @@ def main():
     p.add_argument('--tag', default='', help='suffix for the file names')
     args = p.parse_args()
     os.makedirs(args.out, exist_ok=True)
-    runs = [(r.split('=', 1)[0], load(r.split('=', 1)[1])) for r in args.runs]
+    runs = [(r.rsplit('=', 1)[0], load(r.rsplit('=', 1)[1])) for r in args.runs]
 
     for angle in args.angles:
         fig, axes = plt.subplots(3, 1, figsize=(8, 7.5), sharex=True, facecolor=SURFACE)

@@ -97,3 +97,13 @@ What happened:
   agrees" claim in my 10-05 notes was wrong. Likely cause: the ROS timer is not locked to the
   physics step, so which tick a command lands on depends on wall-clock scheduling. Report the
   boundary as 7.0 +- 0.05 deg.
+- **Seed spread on the hand-made reward is large.** Seeds 1, 2 and 3 hold the body up to
+  7.4, 5.5 and 6.5 deg (each +- 0.1 to 0.3), and park the arm at +49.7, +6.0 and -14.8 rad/s.
+  So the parked speed is an arbitrary, seed-dependent setpoint (even its sign), and seed 1's
+  7.4 deg was the lucky one: on average this policy is *below* LQR's 7.0 on the body alone.
+  Prediction was ~1 deg of spread; actual is ~2 deg.
+- The despin-weight series on seed 1 (c = 0.1, 0.2, 0.4 gives 49.7, 45.5, 9.1 rad/s) cannot
+  be read as a trend: one seed per point, and seed-to-seed noise in parked speed is ~65 rad/s.
+- R sweep for LQR (1e4 to 1e6): boundary 7.0 to 7.08 deg, settling 1.02 to 1.10 s at 6 deg,
+  traces nearly identical (`results/figures/recovery_6deg_Rsweep.png`). Saturation decides
+  the recovery, not the gains.
