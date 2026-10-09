@@ -86,7 +86,16 @@ class PendulumEnvCfg(DirectRLEnvCfg):
     initial_vel_range = [-0.1, 0.1]  # [rad/s], both joints; training only, the harness evaluates from rest
     max_theta = 15.0 * DEG  # training fall threshold [rad]; evaluation uses 45 deg
 
-    # reward
+    # reward: "lqr" (default since 10-09) or "bell" (the 10-05 hand-made reward, kept to reproduce old runs)
+    reward_type = "lqr"
+    # lqr: r = alive_bonus - lqr_cost_scale * (x'Qx + R u^2), the same Q and R as analysis/lqr_design.py,
+    # so PPO and LQR optimise one objective. The bonus makes falling forfeit future reward instead of
+    # escaping future cost; the scale keeps a worst-case recovery cheaper than the forfeited bonus.
+    lqr_q = (1.62, 0.101, 0.04)  # theta [rad], theta_dot [rad/s], w_arm [rad/s]
+    lqr_r = 1.0e5  # torque [N.m]
+    lqr_cost_scale = 0.005
+    alive_bonus = 1.0
+    # bell
     theta_width = 6.0 * DEG  # width of the upright bell [rad]
     despin_gate_width = 2.0 * DEG  # arm-speed penalty only applies inside this [rad]
     w_arm_scale = 100.0  # [rad/s]; arm speed limit, so (w_arm/scale)^2 is 1 at saturation and c reads as a fraction
@@ -143,6 +152,15 @@ class PendulumEnv(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
+        if self.cfg.reward_type == "lqr":
+            q0, q1, q2 = self.cfg.lqr_q
+            cost = (
+                q0 * torch.square(self.joint_pos[:, self._base_dof_idx[0]])
+                + q1 * torch.square(self.joint_vel[:, self._base_dof_idx[0]])
+                + q2 * torch.square(self.joint_vel[:, self._arm_dof_idx[0]])
+                + self.cfg.lqr_r * torch.square(self.actions[:, 0])  # applied torque, after the clip
+            )
+            return self.cfg.alive_bonus - self.cfg.lqr_cost_scale * cost
         total_reward = compute_rewards(
             self.cfg.theta_width,
             self.cfg.despin_gate_width,
