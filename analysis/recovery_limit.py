@@ -17,19 +17,22 @@ import numpy as np
 from scipy.linalg import expm
 from scipy.optimize import linprog
 
-A = np.array([[0.0, 1.0, 0.0],
-              [40.9, 0.0, 0.0],
-              [-40.9, 0.0, 0.0]])
-B = np.array([0.0, -556.0, 53187.0])
+from plant_model import load
 
 p = argparse.ArgumentParser()
+p.add_argument('--urdf', default='urdf/body.urdf')
 p.add_argument('--max_torque', type=float, default=0.025)
+p.add_argument('--no_load_speed', type=float, default=None,
+               help='DC motor line: available torque runs from +-max_torque at rest to 0 at this '
+                    'speed when driving, and up to 2x when braking against the spin')
 p.add_argument('--max_arm_speed', type=float, default=100.0)
 p.add_argument('--horizon', type=float, default=2.0, help='seconds to come to rest (much past 4 s the matrix powers overflow)')
+p.add_argument('--arm0', type=float, default=0.0, help='arm speed at the start (pre-spun), rad/s')
 p.add_argument('--despin', action='store_true', help='arm must also end at 0 rad/s')
 p.add_argument('--dt', type=float, default=1 / 120)
 p.add_argument('--out', help='write the optimal trajectory as a trajectory CSV (plot_traj.py format)')
 args = p.parse_args()
+A, B, _ = load(args.urdf)
 
 # Zero-order-hold discretisation: x[k+1] = Ad x[k] + Bd u[k].
 M = expm(np.block([[A, B[:, None]], [np.zeros((1, 4))]]) * args.dt)
@@ -47,12 +50,20 @@ for k in range(N + 1):
     for j in range(k):
         rows[k, :, j] = powers[k - 1 - j] @ Bd
 
+x_free = np.array([powers[k] @ np.array([0.0, 0.0, args.arm0]) for k in range(N + 1)])  # from arm0
 arm = rows[1:, 2, :]  # arm speed at steps 1..N
-A_ub = np.vstack([arm, -arm])
-b_ub = np.full(2 * N, args.max_arm_speed)
+A_ub = [arm, -arm]
+b_ub = [np.full(N, args.max_arm_speed) - x_free[1:, 2], np.full(N, args.max_arm_speed) + x_free[1:, 2]]
+if args.no_load_speed:  # u_k + (stall / no_load) * w_k <= stall, and the mirror image
+    line = rows[:N, 2, :] * (args.max_torque / args.no_load_speed)
+    line[np.arange(N), np.arange(N)] += 1.0
+    A_ub += [line, -line]
+    c = x_free[:N, 2] * (args.max_torque / args.no_load_speed)
+    b_ub += [args.max_torque - c, args.max_torque + c]
+A_ub, b_ub = np.vstack(A_ub), np.concatenate(b_ub)
 end = [0, 1, 2] if args.despin else [0, 1]
 A_eq = rows[N, end, :]
-b_eq = np.zeros(len(end))
+b_eq = -x_free[N, end]
 c = np.zeros(N + 1)
 c[N] = -1.0  # maximise theta0
 bounds = [(-args.max_torque, args.max_torque)] * N + [(0, None)]
@@ -60,9 +71,9 @@ res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, meth
 if not res.success:
     raise SystemExit(res.message)
 theta0 = res.x[N]
-x = rows @ res.x
-print(f'max recoverable lean: {np.degrees(theta0):.2f} deg '
-      f'(torque {args.max_torque} N.m, arm {args.max_arm_speed} rad/s, {args.horizon} s, '
+x = rows @ res.x + x_free
+print(f'max recoverable lean: {np.degrees(theta0):.2f} deg ({args.urdf}, '
+      f'torque {args.max_torque} N.m, arm {args.max_arm_speed} rad/s, {args.horizon} s, '
       f'{"despun" if args.despin else "arm free"}); peak |arm| {abs(x[:, 2]).max():.1f} rad/s, '
       f'final arm {x[-1, 2]:+.1f} rad/s')
 if args.out:

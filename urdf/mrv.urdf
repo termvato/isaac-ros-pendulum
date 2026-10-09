@@ -7,7 +7,8 @@
        COM is on the vertical through the pivot (x = 0), as on the real MRV, which balances on
        its foot; the arms' sideways offsets are kept as inertia only.
        Sources: Fusion masses and inertias and the Kingly Gear test report (CLAUDE.md "MRV
-       parameters"). Totals: 358.1 g, COM 221 mm above the foot, mgl 0.777 N.m, inertia about
+       parameters"). Totals: 358.1 g, COM 210 mm above the foot (measured 2026-10-09; the
+       parts as drawn give 221, so the body link COM is lowered to 207.3 mm to match), inertia about
        the foot 1.93e-2 kg.m^2.
        Not modelled: reflected rotor inertia, gearbox backlash, motor torque-speed line (the
        controller and Lab env enforce that, not the URDF). -->
@@ -57,7 +58,7 @@
     </visual>
     <inertial>
       <mass value="0.3166"/>
-      <origin xyz="0 0 0.2199" rpy="0 0 0"/>
+      <origin xyz="0 0 0.2073" rpy="0 0 0"/>
       <inertia ixx="1.580e-3" iyy="1.580e-3" izz="6.1e-4" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
