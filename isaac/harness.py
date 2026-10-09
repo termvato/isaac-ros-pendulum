@@ -13,6 +13,8 @@ parser.add_argument("--label", required=True, help="names the CSV, e.g. lqr_0p02
 parser.add_argument("--lo", type=float, default=3.0, help="lean that must recover (deg)")
 parser.add_argument("--hi", type=float, default=15.0, help="lean that must fall (deg)")
 parser.add_argument("--tol", type=float, default=0.05, help="stop when hi - lo is below this (deg)")
+parser.add_argument("--damping", type=float, default=0.0,
+                    help="PhysX angular damping on every body; the URDF has none, PhysX defaults to 0.05")
 parser.add_argument("--gui", action="store_true", help="render a window; slower")
 args, _ = parser.parse_known_args()
 
@@ -34,6 +36,19 @@ enable_extension("isaacsim.ros2.bridge")
 simulation_app.update()
 
 open_stage(STAGE)
+
+# PhysX applies a default angular damping (drag) to every rigid body unless told otherwise. The
+# URDF owns the plant and has no drag, so set it explicitly. Found 10-09: the default holds a
+# spinning arm against drag, which tilts the body 0.043 deg off vertical.
+import omni.usd
+from pxr import PhysxSchema, UsdPhysics
+
+for prim in omni.usd.get_context().get_stage().Traverse():
+    if prim.HasAPI(UsdPhysics.RigidBodyAPI):
+        api = PhysxSchema.PhysxRigidBodyAPI.Apply(prim)
+        api.CreateAngularDampingAttr().Set(args.damping)
+        api.CreateLinearDampingAttr().Set(0.0)
+        print(f"damping {args.damping} on {prim.GetPath()}", flush=True)
 
 import omni.timeline
 from isaacsim.core.api import SimulationContext
@@ -70,9 +85,14 @@ node = rclpy.create_node("harness")
 last_command_wall = None  # wall time of the latest /joint_command, None until one arrives
 
 
+last_effort = float("nan")
+
+
 def on_command(msg):
-    global last_command_wall
+    global last_command_wall, last_effort
     last_command_wall = time.monotonic()
+    if msg.effort:
+        last_effort = msg.effort[0]
 
 
 node.create_subscription(JointState, "/joint_command", on_command, 10)
@@ -109,6 +129,9 @@ def trial(theta0_deg):
     while timeline.get_current_time() - t0 < TRIAL_S:
         step()
         theta = pendulum.get_joint_positions()[BASE]
+        w = pendulum.get_joint_velocities()
+        traj.append((theta0_deg, timeline.get_current_time() - t0, np.rad2deg(theta),
+                     w[BASE], w[ARM], last_effort))
         if abs(np.rad2deg(theta)) > FELL_DEG:
             fell = True
             break
@@ -128,6 +151,7 @@ RESULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "result
 os.makedirs(RESULTS, exist_ok=True)
 csv_path = os.path.join(RESULTS, f"bisect_{args.label}.csv")
 rows = []
+traj = []  # every physics step of every trial, for plots
 
 
 def run(theta0, note):
@@ -166,6 +190,12 @@ finally:
         writer.writeheader()
         writer.writerows(rows)
     print(f"wrote {len(rows)} trials to {csv_path}", flush=True)
+    traj_path = os.path.join(RESULTS, f"traj_{args.label}.csv")
+    with open(traj_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["theta0", "t", "theta_deg", "w_base", "w_arm", "effort"])
+        writer.writerows(traj)
+    print(f"wrote {len(traj)} steps to {traj_path}", flush=True)
     node.destroy_node()
     rclpy.shutdown()
     simulation_app.close()

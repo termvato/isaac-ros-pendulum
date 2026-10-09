@@ -38,6 +38,8 @@ PENDULUM_CFG = ArticulationCfg(
         ),  # belt and braces: the actuator cfg below zeroes these again at sim start
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             max_angular_velocity=1.0e4,  # deg/s; keep PhysX's body cap above the 100 rad/s joint limit
+            angular_damping=0.0,  # PhysX default is 0.05 drag on every body; the URDF has none (found 10-09)
+            linear_damping=0.0,
         ),  # world-frame cap per body, not the motor limit; arm world speed = body + arm, so 100 rad/s here would bind early
     ),
     init_state=ArticulationCfg.InitialStateCfg(
