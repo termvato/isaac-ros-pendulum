@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'pendulum_controller = pendulum_nodes.pendulum_controller:main',
+            'pendulum_policy = pendulum_nodes.pendulum_policy:main',
         ],
     },
 )
