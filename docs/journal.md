@@ -251,3 +251,6 @@ What happened:
   reproduces body.urdf's hand-derived A and B and MRV's 358 g / 210 mm. Product reward smoke-tested
   in Lab at 64 envs, 3 iterations, before queuing; queue12 repeats the smoke test at full scale
   and aborts if it fails. Unknown `reward_type` values now raise instead of silently using "bell".
+- **Decision (his): the PPO-vs-LQR part is complete after tonight's runs.** No MRV training or
+  MRV LQR runs; the MRV URDF, plant model and bench re-enactment stay as built. The bench
+  discrepancy (12 deg measured vs 4.4 deg modelled pre-spun) is left open and noted as such.
