@@ -271,3 +271,9 @@ What happened:
 - **The part is closed (his call, 10-09).** Result for the statement: under identical limits PPO
   matches LQR at the physical limit (7.46 of 7.48 deg in Lab) and does not beat it; despin
   is unreliable: 2 of 20 seeds at 500 iterations, 1 of 10 at 2000.
+- **Seed 10 at 5000 iterations** (picked as the best seed, so not evidence of a rate): Lab holds
+  7.4 deg, arm +0.3 rad/s from every lean (2000 its: +0.2, so no change). ROS harness: recovers
+  6.33, falls 6.375 deg (repeat recovered at 6.375, so the edge is fuzzy), despun to +0.2-0.3 rad/s
+  every recovery. The same bracket as the 500-iteration seed 10 through ROS, and ~0.7 deg below LQR's
+  7.03. The extra training bought nothing measurable. His prediction: stays despun (right),
+  marginally better (no), ROS ~7.03 like LQR (no, 6.33).
