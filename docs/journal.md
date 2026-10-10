@@ -277,3 +277,33 @@ What happened:
   every recovery. The same bracket as the 500-iteration seed 10 through ROS, and ~0.7 deg below LQR's
   7.03. The extra training bought nothing measurable. His prediction: stays despun (right),
   marginally better (no), ROS ~7.03 like LQR (no, 6.33).
+
+## 2026-10-10: why ROS read lower than Lab. A harness bug, now fixed
+
+- **Cause:** after a trial fell, the next trial's first physics steps applied the fallen trial's
+  last command (saturated) before the controller saw the teleport. Evidence: every trial after a
+  fall started with the arm at +-5.5 rad/s at the first sample, i.e. one 4.17 ms step of full
+  torque (0.025 x 4.17e-3 / 1.9e-5 = 5.5); after a recovery, ~0. For LQR and lr_s1 the kick
+  pushed the right way, for seed 10 the wrong way. Every boundary pair in the old bisections was
+  "recovered right after a fall, fell right after a recovery": the bisection was measuring the
+  kick. This is also the 09-26 "6.9 vs 7.0 depends on initial state" mystery and every
+  "repeat agrees: False".
+- **Fix** (`isaac/harness.py`, `HOLD_S = 0.1`): hold the body at theta0, at rest, re-teleporting
+  every step for 0.1 s while the controller catches up, then release. Every trial now starts with
+  the controller's own command for theta0 (first-sample arm speed +5.52 on all 48 trials).
+- **Fixed ROS results (repeats agree on all four):** LQR 7.453 / 7.500; lr_s1 7.453 / 7.500,
+  arm -0.36; lr_s10 (500 its) 7.359 / 7.406, arm -0.77; lr5k_s10 7.453 / 7.500, arm +0.3. ROS now
+  matches Lab to the bisection tolerance. Limit 7.48.
+- **Loop lag is real but harmless here.** Backing the applied torque out of the arm's acceleration
+  (I_a x d(w_arm + w_base)/dt, so not trusting the harness's own command log, which ran up to
+  75 ms late) shows commands act on state 3 physics steps (12.5 ms) old, cleanly for LQR and
+  lr_s1. With the hold in place it costs < 0.05 deg. My Lab delay test (1 step: 7.05 deg) was
+  confounded: `ActionDelay` starts with zeros, so it added 8.3 ms of dead time at release, which
+  is the same mistake as the bug.
+- **His prediction for lr5k_s10** ("stays despun, marginally better, ROS around the same as LQR"):
+  right on all three once the harness is fixed (7.36 -> 7.45 deg in ROS, equal to LQR). Against the
+  broken harness it looked wrong.
+- **Every harness number before commit 4f87e24 is affected**, including LQR 7.03 (10-05), the R
+  sweep, and the ROS figures quoted in this journal. Lab numbers are not affected.
+- **Result now:** through ROS, LQR and the best PPO policies all recover 7.45 deg of a 7.48 deg
+  physical limit, despun. PPO ties LQR; it does not beat it.

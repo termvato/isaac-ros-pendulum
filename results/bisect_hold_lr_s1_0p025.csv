@@ -1,0 +1,13 @@
+theta0,recovered,fell,theta_end_deg,w_arm_end,note
+3.0,True,False,-0.00024358886,-0.42412984,sanity_lo
+15.0,False,True,45.164177,99.849495,sanity_hi
+9.0,False,True,45.023994,99.270325,bisect
+6.0,True,False,-0.0016081091,-0.40639535,bisect
+7.5,False,True,45.351315,99.26509,bisect
+6.75,True,False,-0.0022681737,-0.38856804,bisect
+7.125,True,False,-0.002463068,-0.4084247,bisect
+7.3125,True,False,-5.12095e-05,-0.30894884,bisect
+7.40625,True,False,0.0018913244,-0.3389314,bisect
+7.453125,True,False,0.002206415,-0.35878032,bisect
+7.453125,True,False,0.0024958495,-0.37530336,repeat_lo
+7.5,False,True,45.345932,99.264175,repeat_hi
