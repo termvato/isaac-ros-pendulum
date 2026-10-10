@@ -17,6 +17,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--policy", required=True, help="TorchScript policy.pt from play.py (normalizer included)")
 parser.add_argument("--angles", type=float, nargs="+", default=[3.0, 5.0, 7.0, 9.0], help="start leans, deg")
 parser.add_argument("--out", required=True, help="trajectory CSV, same columns as the harness's traj_*.csv")
+parser.add_argument("--delay", type=int, default=0,
+                    help="apply each action this many policy steps (8.33 ms each) late, to mimic the ROS loop")
 parser.add_argument("--angular_damping", type=float, default=None, help="override the env's body angular damping")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
@@ -28,6 +30,7 @@ import os  # noqa: E402
 
 import torch  # noqa: E402
 
+from rl.delay import ActionDelay  # noqa: E402
 from rl.pendulum_env import PendulumEnv, PendulumEnvCfg  # noqa: E402
 
 cfg = PendulumEnvCfg()
@@ -52,9 +55,10 @@ rows = []
 # The env auto-resets an env that falls (to a random lean), so stop recording it at its first
 # fall; otherwise the trace jumps back to a new start and looks like a recovery.
 alive = [True] * len(args.angles)
+delay = ActionDelay(args.delay)
 with torch.no_grad():
     for k in range(steps + 1):
-        act = policy(obs)
+        act = delay(policy(obs))
         torque = (act.clamp(-1.0, 1.0) * cfg.action_scale).squeeze(1).tolist()
         for i, (a, o, u) in enumerate(zip(args.angles, obs.tolist(), torque)):
             if alive[i]:

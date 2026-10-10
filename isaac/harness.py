@@ -104,6 +104,7 @@ FELL_DEG = 45.0      # same "fell" definition as analysis/bag_reader.py
 UPRIGHT_DEG = 0.5    # recovered: body within this of upright at the end...
 DESPUN_RAD_S = 1.0   # ...and arm slower than this
 ALIVE_S = 0.5        # controller counts as alive if it published within this much wall time
+HOLD_S = 0.1         # hold at theta0 before release, well past the ~12.5 ms command lag
 
 
 def step():
@@ -123,7 +124,14 @@ def wait_for_controller(timeout_s=30.0):
 def trial(theta0_deg):
     """Teleport to theta0 and run TRIAL_S of sim time. Returns a dict of the outcome."""
     wait_for_controller()
+    # Hold the body at theta0, at rest, while the controller catches up. Without this the first
+    # steps of a trial apply the previous trial's last command (saturated if it fell): a full
+    # torque kick whose sign depended on how the previous trial ended (found 2026-10-10).
     teleport(theta0_deg)
+    t_hold = timeline.get_current_time()
+    while timeline.get_current_time() - t_hold < HOLD_S:
+        step()
+        teleport(theta0_deg)
     t0 = timeline.get_current_time()
     fell = False
     while timeline.get_current_time() - t0 < TRIAL_S:
