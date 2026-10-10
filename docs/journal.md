@@ -254,3 +254,20 @@ What happened:
 - **Decision (his): the PPO-vs-LQR part is complete after tonight's runs.** No MRV training or
   MRV LQR runs; the MRV URDF, plant model and bench re-enactment stay as built. The bench
   discrepancy (12 deg measured vs 4.4 deg modelled pre-spun) is left open and noted as such.
+
+## 2026-10-10: overnight results (`results/figures/seeds_overnight.png`)
+
+- **500 iterations, seeds 11-20: none despun.** Total 2 of 20 (seeds 1 and 10). His prediction
+  ("one or two more, out of luck"): 0 more. Each seed parks at the same arm speed from every start
+  lean, so the parked speed is a property of the policy, not of the recovery.
+- **2000 iterations, seeds 1-10: every seed holds 7.4 deg, and arm speeds collapse towards zero**
+  (-15.6 to +10.5, 7 of 10 within 5 rad/s, against -28 to +33 at 500). Only seed 10 is under the
+  1 rad/s bar (+0.2). Seed 1 got worse (-0.4 at 500, -2.7 at 2000). So longer training removes the
+  body-boundary spread entirely and drifts the parked speed towards zero, slowly; the drift is not
+  monotone per seed.
+- **Product reward, seeds 1-10: no better.** 1 despun (s8, -0.4; s1 close at +1.3); 6 hold 7.4;
+  s2 never balances, s6 holds 3, s9 holds 4. Worse on the catch than the LQR-cost reward, no better
+  on despin. Not pursued.
+- **The part is closed (his call, 10-09).** Result for the statement: under identical limits PPO
+  matches LQR at the physical limit (7.46 of 7.48 deg in Lab) and does not beat it; despin
+  is unreliable: 2 of 20 seeds at 500 iterations, 1 of 10 at 2000.
