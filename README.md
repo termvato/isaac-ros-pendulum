@@ -11,9 +11,16 @@ The pendulum's parameters are close to those of [MRV](https://github.com/termvat
 monopedal jumping robot I built for my final-year project. This repo asks how far such a
 robot can lean and still recover, and what limits it.
 
-**Main result:** the design is **speed-limited, not torque-limited**. Cutting the motor torque
-to a quarter costs only 1 degree of recoverable lean. What sets the limit is how fast the
-reaction arm can spin.
+**Main results:**
+
+- **The design is speed-limited, not torque-limited.** Cutting the motor torque to a quarter
+  costs only 1 degree of recoverable lean. What sets the limit is how fast the reaction arm can
+  spin.
+- **A learned controller cannot beat LQR here.** PPO trained in Isaac Lab and deployed as a
+  drop-in ROS 2 node recovers the same 7.45 deg lean as LQR, and a linear program over every
+  possible torque sequence shows no controller can recover more than 7.47 deg. PPO is weaker at
+  despinning the arm afterwards (2 of 20 seeds). Full write-up:
+  **[docs/ppo_vs_lqr.md](docs/ppo_vs_lqr.md)**.
 
 ## Interface
 
@@ -44,8 +51,11 @@ reaction arm can spin.
 - **Joints are looked up by name, never by index**, because Isaac does not guarantee joint
   order in the message.
 - **Timer-driven, not callback-driven.** The controller sets its own 120 Hz rate and acts on
-  the latest stored state. That costs up to one period of latency, but it fixes the loop
-  rate no matter when messages arrive.
+  the latest stored state. That costs latency (measured: commands act on state 12.5 ms old),
+  but it fixes the loop rate no matter when messages arrive.
+- **Controllers are interchangeable.** `pendulum_policy` runs an ONNX policy exported from
+  Isaac Lab behind exactly the same topics, rate and stale-state guard as the LQR node, so the
+  harness evaluates a learned controller and LQR identically.
 - **The controller reads the arm's velocity as well as the body's state.** This is not
   optional: without it, the arm is never slowed back down and ends up at its speed limit.
   The PD result below shows this happening.
@@ -71,7 +81,8 @@ is `analysis/lqr_design.py`.
 Closed-loop poles: **-33.7** and a near-double pole at **-6.36 +/- 0.04j** rad/s.
 
 - **Delay margin.** A pure delay T adds phase lag of roughly `omega * T`, so the fast mode
-  goes unstable near `T = (pi/2) / 33.7 = 47 ms`. That is about 5x the 8.3 ms loop period.
+  goes unstable near `T = (pi/2) / 33.7 = 47 ms`. The measured loop delay is 12.5 ms (state
+  to applied torque), so the margin is about 4x.
 - **Settling time (2%) is 0.92 s**, matching a double pole at -6.36, where
   `(1 + st) e^(-st) = 0.02` gives `st = 5.8`.
 - The -6.36 pair is pinned by the plant, not by tuning. As control gets more expensive, LQR
@@ -123,20 +134,28 @@ controller.
 
 ### Bisected boundary
 
-`isaac/harness.py` replaces the hand-typed sweep: it sets the lean, runs a 10 s trial, judges
-it, and bisects to 0.05 deg. Every trial starts from rest (both joint velocities zeroed), so
-no arm speed carries over from the last one. **Recovered** is stricter than "did not fall":
-the body must be within 0.5 deg of upright **and the arm below 1 rad/s** at the end, because a
-real pendulum gets pushed again and an arm left spinning has less headroom for the next push.
+`isaac/harness.py` replaces the hand-typed sweep: it sets the lean, holds the body there at
+rest for 0.1 s while the controller reacts, releases it, runs a 10 s trial, judges it, and
+bisects to 0.05 deg. **Recovered** is stricter than "did not fall": the body must be within
+0.5 deg of upright **and the arm below 1 rad/s** at the end, because a real pendulum gets
+pushed again and an arm left spinning has less headroom for the next push.
 
 | Controller | Torque limit | Recovers | Fails | Repeat agrees |
 |---|---|---|---|---|
-| LQR | 0.025 N.m | 7.031 deg | 7.078 deg | yes |
+| LQR | 0.025 N.m | 7.453 deg | 7.500 deg | yes |
+| Physical limit, any controller | 0.025 N.m | 7.47 deg | | |
 
-This sits inside the hand sweep's gap (7.0 deg recovered, 7.5 deg fell), and every recovery
-ended with the arm below 0.1 rad/s, so the despin requirement cost LQR nothing. The bracket
-ends gave the same result when rerun, so with identical starting states the boundary is
-sharp. Per-trial data: `results/bisect_lqr_0p025.csv`.
+Every recovery ended with the arm below 0.1 rad/s, so the despin requirement cost LQR nothing.
+The limit comes from `analysis/recovery_limit.py` (see [docs/ppo_vs_lqr.md](docs/ppo_vs_lqr.md)).
+Per-trial data: `results/bisect_hold_lqr_0p025.csv`.
+
+**The hold is a bug fix.** Before it, a trial began with the previous trial's last command
+still applied for a physics step. After a fall that was a full-torque kick, so each result
+depended on how the trial before it ended, and the bisection measured the kick: LQR read
+7.03 deg, and repeats flipped. Found by reconstructing the applied torque from the arm's
+acceleration. Every harness number from before the fix (commit `4f87e24`) is superseded.
+
+![ROS boundaries before and after the harness fix](results/figures/boundaries_harness_fix.png)
 
 **Update rate is part of the controller.** Isaac Sim's standalone app steps 1/60 s frames by
 default, which delivered state to the controller at 60 Hz instead of 240 Hz. At that rate the
@@ -152,6 +171,24 @@ every 8.333 ms, with zero variation in every bag. That is an artefact of quantis
 the 120 Hz timer lands on every second physics step. Hardware will have real jitter. Note
 also that `ros2 topic hz` measures wall-clock arrival, which under `use_sim_time` is not the
 loop rate (Isaac ran at about 0.3x real time here).
+
+## Learned controller
+
+PPO trained in Isaac Lab on the same plant, limits, observations and recovery definition,
+exported to ONNX and run by `pendulum_policy` through the same harness.
+
+![Recovery from 7.45 deg: best possible, LQR and PPO](results/figures/recovery_7.45deg_limit.png)
+
+- **Catch:** the best policies recover 7.45 deg through ROS, the same as LQR, against a physical
+  limit of 7.47 deg. My prediction was that PPO would win by saturating the arm harder; LQR was
+  already within 0.02 deg of the limit.
+- **Despin:** only 2 of 20 seeds at 500 iterations, and 1 of 10 at 2000, end with the arm below
+  1 rad/s. The rest park it at a steady speed. Reward shaping, a multiplicative reward and longer
+  training did not fix it.
+- Lab and ROS agree to within the evaluation grid, so the interface is transparent to a learned
+  controller as well.
+
+Method, all results, what failed and how to reproduce: [docs/ppo_vs_lqr.md](docs/ppo_vs_lqr.md).
 
 ## Watch a recorded run
 
@@ -222,7 +259,9 @@ ros2 run pendulum_nodes pendulum_controller --ros-args -p use_sim_time:=true -p 
 ./isaac/run_harness.sh --label lqr_0p025          # add --gui to watch
 ```
 
-The result lands in `results/bisect_<label>.csv`. `run_harness.sh` launches the script with a
+For a learned policy, run `pendulum_policy` in terminal 1 instead (see
+[docs/ppo_vs_lqr.md](docs/ppo_vs_lqr.md#reproduce)). The result lands in
+`results/bisect_<label>.csv`. `run_harness.sh` launches the script with a
 clean environment pointed at Isaac Sim's bundled ROS 2 libraries: the harness itself uses
 `rclpy` (to check the controller is publishing), and system Jazzy's `rclpy` is built for
 Python 3.12 while Isaac runs 3.11. The controller still runs on system ROS and connects
@@ -247,33 +286,46 @@ All times use `header.stamp` (sim time), not bag receive time (wall clock).
 ```
 analysis/bag_reader.py        bag -> per-disturbance metrics table
 analysis/lqr_design.py        LQR gain design from the linearised model
+analysis/plant_model.py       linearised model computed from a URDF (tested against lqr_design)
+analysis/recovery_limit.py    largest recoverable lean for any controller, as a linear program
+analysis/plot_*.py            figures
 bags/                         the four sweeps in the results table
+config/limits.yaml            torque limit shared by both nodes and the Isaac Lab env
+docs/ppo_vs_lqr.md            the learned-controller comparison
+docs/journal.md               how the project went, including the wrong turns
 isaac/first_pendulum.usd      Isaac stage: physics, drives, ROS 2 OmniGraph
 isaac/harness.py              headless Isaac Sim: set lean, judge trial, bisect boundary
 isaac/run_harness.sh          launches the harness on Isaac's bundled ROS 2 libraries
-results/                      bisection CSVs, one per controller and torque limit
-src/pendulum_nodes/           the controller node
+rl/                           Isaac Lab env, PPO config, Lab evaluation, LQR as a policy
+results/                      bisections, learning curves, figures, predictions
+scripts/                      train_eval.sh and the batch scripts behind each result
+src/pendulum_nodes/           the LQR node and the ONNX policy node
+tests/                        unit tests: PYTHONPATH=. ~/isaacsim/python.sh -m pytest tests
 urdf/body.urdf                pendulum description (masses, inertias, limits)
 urdf/body/                    URDF imported into USD by Isaac, referenced by the stage
+urdf/mrv.urdf                 MRV, the real robot, for later sim-to-real work
 launch/pendulum_launch.py     replay a bag in RViz, no Isaac needed
 rviz/                         RViz config
 ```
 
 ## Limitations and next steps
 
-- **The bagged sweeps were set by hand** in the Isaac GUI; the harness now automates the
-  boundary search, but so far only LQR at 0.025 N.m has been bisected.
+- **The bagged sweeps were set by hand** in the Isaac GUI. The harness automates the boundary
+  search, but so far only 0.025 N.m has been bisected.
+- **The harness tests release from a held lean, not an unannounced push.** Holding the body
+  while the controller reacts gives every controller a correct first command. A push on
+  hardware arrives mid-loop, and the 12.5 ms delay then matters more.
 - **The ROS interface lives inside a binary `.usd`.** It should be exported as a Python graph
   script so it can be read and diffed.
 - **No Isaac-side watchdog.** If the controller dies, Isaac keeps applying its last command.
 - **The replay launch file is for bags, not live runs.** Run alongside Isaac, the bag and
   Isaac would both publish `/joint_states` and `/clock`.
-- **The bagged sweeps are one run per torque limit at 0.5 deg resolution.** An earlier hand
-  run at 0.025 N.m fell at 6.9 deg; the bisected boundary is 7.03 to 7.08 deg and repeatable,
-  so that disagreement most likely came from un-reset state between hand-set disturbances.
-- **In progress: a learned policy against LQR.** PPO trained in Isaac Lab on the same plant,
-  torque clamp and arm-speed limit, deployed as a ROS 2 node and bisected with the same
-  harness and the same recovery definition.
-- **The model matrices in `lqr_design.py` are typed in by hand** rather than computed from
-  the URDF.
+- **The bagged sweeps are one run per torque limit at 0.5 deg resolution**, set by hand while
+  the controller was running, so each disturbance started on a stale command, as in the old
+  harness. Their boundaries are not directly comparable with the harness's.
+- **The harness's logged command (`effort` in `traj_*.csv`) is what the harness received, which
+  can lag the torque physics applied by tens of ms.** Use `I_a d(w_arm + w_base)/dt` for the
+  applied torque.
+- **The model matrices in `lqr_design.py` are typed in by hand.** `analysis/plant_model.py`
+  computes them from the URDF and a unit test checks they agree.
 - **Sim only.** No hardware results yet.

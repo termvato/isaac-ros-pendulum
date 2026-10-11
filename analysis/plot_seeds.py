@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 
 COLOURS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948']
 INK, MUTED, SURFACE = '#0b0b0b', '#52514e', '#fcfcfb'
-LQR, LIMIT = 7.46, 7.48  # deg: LQR in Lab (rl/lqr_policy.py + lab_eval, same sim as the dots), analysis/recovery_limit.py
+LQR, LIMIT = 7.46, 7.47  # deg: LQR in Lab (rl/lqr_policy.py + lab_eval, same sim as the dots), analysis/recovery_limit.py
 
 
 def summarise(path):
@@ -50,9 +50,10 @@ for i, group in enumerate(args.groups):
                 [w for _, w in pts if w is not None], s=50, color=COLOURS[i], edgecolor=SURFACE, lw=1.5, zorder=3)
     print(f'{label}: ' + ', '.join(f'{a:g}/{w if w is None else round(w, 1)}' for a, w in pts))
 ax0.axhline(LIMIT, color=INK, lw=1, ls='--')
-ax0.text(len(args.groups) - 0.55, LIMIT + 0.08, f'physical limit {LIMIT}', color=MUTED, ha='right', fontsize=9)
 ax0.axhline(LQR, color=MUTED, lw=1)
-ax0.text(len(args.groups) - 0.55, LQR - 0.25, f'LQR {LQR}', color=MUTED, ha='right', fontsize=9)
+# the two lines nearly coincide, so one label above both
+ax0.text(-0.45, LIMIT + 0.15, f'physical limit {LIMIT} (dashed), LQR {LQR} (solid)', color=MUTED, ha='left', fontsize=9)
+ax0.set_ylim(top=LIMIT + 0.7)
 ax1.axhspan(-1, 1, color='#e6e5e0')
 ax1.text(len(args.groups) - 0.55, 1.5, 'despun', color=MUTED, ha='right', fontsize=9)
 labels = [g.rsplit('=', 1)[0] for g in args.groups]

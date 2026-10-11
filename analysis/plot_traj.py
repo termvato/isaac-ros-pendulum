@@ -43,19 +43,24 @@ def main():
     p.add_argument('--angles', type=float, nargs='+', required=True)
     p.add_argument('--out', default='results/figures')
     p.add_argument('--tag', default='', help='suffix for the file names')
+    p.add_argument('--no_torque', action='store_true',
+                   help="drop the torque panel: a harness CSV's effort column is the last command the "
+                        "harness received, which can lag what physics applied by tens of ms")
     args = p.parse_args()
     os.makedirs(args.out, exist_ok=True)
     runs = [(r.rsplit('=', 1)[0], load(r.rsplit('=', 1)[1])) for r in args.runs]
 
     for angle in args.angles:
-        fig, axes = plt.subplots(3, 1, figsize=(8, 7.5), sharex=True, facecolor=SURFACE)
+        keys = ('theta_deg', 'w_arm') if args.no_torque else ('theta_deg', 'w_arm', 'effort')
+        ylabels = ('body angle [deg]', 'arm speed [rad/s]', 'arm torque [N.m]')[:len(keys)]
+        fig, axes = plt.subplots(len(keys), 1, figsize=(8, 2.5 * len(keys)), sharex=True, facecolor=SURFACE)
         for colour, (label, trials) in zip(COLOURS, runs):
             theta0 = min(trials, key=lambda a: abs(a - angle))
             tr = trials[theta0]
             name = label if abs(theta0 - angle) < 1e-6 else f'{label} ({theta0:.2f} deg)'
-            for ax, key in zip(axes, ('theta_deg', 'w_arm', 'effort')):
+            for ax, key in zip(axes, keys):
                 ax.plot(tr['t'], tr[key], color=colour, lw=2, label=name)
-        for ax, ylabel in zip(axes, ('body angle [deg]', 'arm speed [rad/s]', 'arm torque [N.m]')):
+        for ax, ylabel in zip(axes, ylabels):
             ax.set_facecolor(SURFACE)
             ax.set_ylabel(ylabel, color=MUTED)
             ax.grid(color='#e6e5e0', lw=0.8)

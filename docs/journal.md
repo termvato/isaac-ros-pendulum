@@ -307,3 +307,20 @@ What happened:
   sweep, and the ROS figures quoted in this journal. Lab numbers are not affected.
 - **Result now:** through ROS, LQR and the best PPO policies all recover 7.45 deg of a 7.48 deg
   physical limit, despun. PPO ties LQR; it does not beat it.
+
+## 2026-10-11: project closed, write-up
+
+- **Physical limit restated as 7.47 deg** (7.470 with `--despin`, 2 s and 4 s horizons agree).
+  The 7.48 quoted from 10-09 came from the hand-typed matrices before `recovery_limit.py` switched
+  to `plant_model.py`; the difference is in the model's third figure (40.9 vs 40.85). Torque-only
+  19.47 deg, doubled torque 8.35 deg, both unchanged at the precision quoted before.
+- **Final configuration is now the default** (`rl/agents/rsl_rl_ppo_cfg.py`: fixed LR 1e-3,
+  gamma 0.997; `rl/pendulum_env.py`: starts within +-8 deg), so `scripts/train_eval.sh <seed>`
+  reproduces a published seed with no overrides. Checked: seed 1 retrained from the defaults gives
+  a Lab evaluation identical to lr_s1 in every row (max difference 0.0).
+- **Write-up:** `docs/ppo_vs_lqr.md`, linked from the README. README results now quote the fixed
+  harness (LQR 7.453 / 7.500) and say why the old 7.03 is superseded. New figures:
+  `boundaries_harness_fix.png`, `recovery_7.125deg_harness_fix.png`, `recovery_7.45deg_limit.png`.
+- **Kept in this repo, not split out.** The comparison's credibility rests on this repo's harness,
+  URDF and ROS nodes; a learned controller running unchanged behind the same interface is the
+  interface's strongest demonstration.
