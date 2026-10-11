@@ -261,7 +261,7 @@ What happened:
   ("one or two more, out of luck"): 0 more. Each seed parks at the same arm speed from every start
   lean, so the parked speed is a property of the policy, not of the recovery.
 - **2000 iterations, seeds 1-10: every seed holds 7.4 deg, and arm speeds collapse towards zero**
-  (-15.6 to +10.5, 7 of 10 within 5 rad/s, against -28 to +33 at 500). Only seed 10 is under the
+  (-15.6 to +10.5, 8 of 10 within 5 rad/s, against -28 to +33 at 500). Only seed 10 is under the
   1 rad/s bar (+0.2). Seed 1 got worse (-0.4 at 500, -2.7 at 2000). So longer training removes the
   body-boundary spread entirely and drifts the parked speed towards zero, slowly; the drift is not
   monotone per seed.
