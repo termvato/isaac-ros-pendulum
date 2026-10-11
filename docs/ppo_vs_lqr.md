@@ -14,8 +14,7 @@ the arm at 100 rad/s for ~0.9 s, swing the body past upright, and despin. The li
 trajectory ("best possible", from 7.47 deg) stays saturated longer and despins later.*
 
 The day-by-day record, including every wrong turn, is in [journal.md](journal.md). Predictions
-were written before results, in [results/predictions_2026-10-09.md](../results/predictions_2026-10-09.md)
-and [results/predictions_2026-10-10.md](../results/predictions_2026-10-10.md).
+were written before results, in [results/predictions.md](../results/predictions.md).
 
 ## The question and the prediction
 
@@ -113,7 +112,7 @@ Each change was one variable, with a prediction written first.
 | Starts narrowed from +-12 to +-8 deg | parked speeds tighter, 0 of 10 despun |
 | Adaptive learning rate to fixed 1e-3 | no more training crashes; first 2 despun seeds |
 | Potential-based shaping on arm speed (Ng et al. 1999), k = 0.001 to 0.25 | no despin; larger k weakens the catch; k = 0.25 never balances |
-| The same shaping, gated to near upright | never balances: rewarded leaving upright with a spinning arm (my design error) |
+| The same shaping, gated to near upright | never balances: rewarded leaving upright with a spinning arm (a design error) |
 | Multiplicative reward, DeepMind Control Suite style | 1 of 10 despun, catch worse |
 | 2000 and 5000 iterations | catch converges; despin 1 of 10 |
 

@@ -44,7 +44,7 @@ writing predictions before each run, deciding what to test, reviewing what the c
 and interpreting results. A robotics researcher doesn't keep in their head how to wire ROS
 nodes; they need to know what their setup assumes, because every silent failure in this
 project was an assumption, not a wiring bug. Rules: predictions are written down before
-results are seen (`results/predictions_2026-10-09.md`), and any judgement call (reward,
+results are seen (`results/predictions.md`), and any judgement call (reward,
 hyperparameters) stops and waits for me.
 
 What happened:
@@ -94,7 +94,7 @@ What happened:
   and the arm keeps the rest. Longer horizon (gamma 0.999) undershoots more and keeps less.
 - **LQR's boundary is not deterministic.** At 6.98 deg one trial recovered and its repeat
   fell; at 7.03 the reverse. The committed 10-05 CSV shows the same flip, so the "repeat
-  agrees" claim in my 10-05 notes was wrong. Likely cause: the ROS timer is not locked to the
+  agrees" claim in the 10-05 notes was wrong. Likely cause: the ROS timer is not locked to the
   physics step, so which tick a command lands on depends on wall-clock scheduling. Report the
   boundary as 7.0 +- 0.05 deg.
 - **Seed spread on the hand-made reward is large.** Seeds 1, 2 and 3 hold the body up to
@@ -110,7 +110,7 @@ What happened:
 - **LQR-cost reward (gamma 0.997, 5 seeds, plus seed 1 at 2000 iterations): still no despin.**
   Body holds up to 6.5, 7.4, 4.0, 7.4, 7.2 deg (lower edge of each bracket; 7.4 for the long
   run); arm parks at +38.7, -18.0, -21.4, +17.2, +13.3 rad/s (-9.9 long). Spread did not
-  shrink; my "a bowl-shaped objective will tighten it" prediction was wrong.
+  shrink; the expectation that a bowl-shaped objective would tighten it was wrong.
 - 500 iterations had plateaued: the 2000-iteration curve is flat (and noisy) from ~200 on,
   and its first 500 iterations overlay seed 1's exactly, so training is deterministic per seed.
 - Lab and Isaac Sim via ROS agree for all six policies: end state at 3 deg matches to three
@@ -187,7 +187,7 @@ What happened:
   arm never gets closer to zero: any up-front charge for arm speed weakens the catch before it
   buys any despin.
 - **Gated shaping (k = 0.25, active within ~2 deg and 0.2 rad/s of upright and still): never
-  learns to balance, all 3 seeds.** My gate design was wrong. A gated potential is lowest
+  learns to balance, all 3 seeds.** The gate design was wrong. A gated potential is lowest
   (most negative) when the body is upright, still and the arm is spinning, which is exactly where
   every catch ends. Leaving that state, by leaning away, raises the potential back towards 0 and
   pays up to +900. So the shaping rewarded tipping over with a spinning arm. Still policy-
@@ -197,12 +197,11 @@ What happened:
 
 ## 2026-10-09 evening: shaping dropped, overnight batch
 
-- **His read: PPO looks like the wrong tool for despin.** Agreed as a view, with a caveat: the
-  failure is specific. PPO matches LQR and nearly reaches the physical limit on the catch. What it
+- **Is PPO the wrong tool for despin?** Partly; the failure is specific. PPO matches LQR and nearly reaches the physical limit on the catch. What it
   cannot do reliably is finish the despin, because the arm parks on stable speeds that cost almost
   nothing per step, and draining them pays off seconds later, beyond what gamma 0.997
   (horizon ~2.8 s) values. Next method is for after the statement, not before.
-- **His idea: tie arm and recovery into one reward instead of separate terms.** Research found:
+- **Idea: tie arm and recovery into one reward instead of separate terms.** Research found:
   - DeepMind Control Suite (Tassa et al. 2018) multiplies terms: cartpole is
     `upright * centered * small_control * small_velocity`, each a tolerance in [0, 1]. A product is
     a soft AND: no term can be traded off against another.
@@ -228,8 +227,8 @@ What happened:
   (a timer node acting on the last stashed state) that Lab's in-loop evaluation does not have, and
   a policy riding the physical limit loses more to it than LQR does. Cheapest test: LQR in Lab.
   If it also shows ~7.4, the comparison is like for like in each simulator and PPO ties LQR.
-- **LQR in Lab: 7.46 deg, identical to PPO's best. Correction to everything I said about PPO
-  "reaching 99% against LQR's 94%".** That compared PPO in Lab against LQR through ROS. Like for
+- **LQR in Lab: 7.46 deg, identical to PPO's best. This corrects the earlier claim that PPO
+  reached 99% of the limit against LQR's 94%.** That compared PPO in Lab against LQR through ROS. Like for
   like (`rl/lqr_policy.py` exports the LQR law as a TorchScript policy, run by the same
   `rl/lab_eval.py`, fine grid 7.2-7.58 deg): LQR holds 7.46 and falls at 7.48; lr_s1 holds 7.46 and
   falls at 7.48; lr_s10 holds 7.3 and falls at 7.4. The physical limit is 7.48. So in Lab LQR is
@@ -240,7 +239,7 @@ What happened:
   LQR on this plant already recovers 99.7% of the physically possible lean (LP bound). Nothing is
   left to win on the catch; the only open question was despin, which PPO does in 2 of 10 seeds.
 - **Product reward added** (`reward_type = "product"`, `rl/rewards.py`): `bell(theta, 6 deg) *
-  (1 + bell(w_arm, 10 rad/s)) / 2`. My parameter calls: arm width 10 rad/s so parking at 30 rad/s
+  (1 + bell(w_arm, 10 rad/s)) / 2`. Parameter choices: arm width 10 rad/s so parking at 30 rad/s
   pays ~half and despun pays ~all; the (1 + x)/2 floor so a catch at 100 rad/s costs at most half
   and never zeroes the reward; no control or body-speed term (one change at a time). Queued after
   the overnight batch as `queue12.sh`, seeds 1-10, 500 iterations, base config otherwise.
@@ -251,14 +250,14 @@ What happened:
   reproduces body.urdf's hand-derived A and B and MRV's 358 g / 210 mm. Product reward smoke-tested
   in Lab at 64 envs, 3 iterations, before queuing; queue12 repeats the smoke test at full scale
   and aborts if it fails. Unknown `reward_type` values now raise instead of silently using "bell".
-- **Decision (his): the PPO-vs-LQR part is complete after tonight's runs.** No MRV training or
+- **Decision: the PPO-vs-LQR part is complete after tonight's runs.** No MRV training or
   MRV LQR runs; the MRV URDF, plant model and bench re-enactment stay as built. The bench
   discrepancy (12 deg measured vs 4.4 deg modelled pre-spun) is left open and noted as such.
 
 ## 2026-10-10: overnight results (`results/figures/seeds_overnight.png`)
 
-- **500 iterations, seeds 11-20: none despun.** Total 2 of 20 (seeds 1 and 10). His prediction
-  ("one or two more, out of luck"): 0 more. Each seed parks at the same arm speed from every start
+- **500 iterations, seeds 11-20: none despun.** Total 2 of 20 (seeds 1 and 10). Prediction
+  ("one or two more, out of luck"): wrong, 0 more. Each seed parks at the same arm speed from every start
   lean, so the parked speed is a property of the policy, not of the recovery.
 - **2000 iterations, seeds 1-10: every seed holds 7.4 deg, and arm speeds collapse towards zero**
   (-15.6 to +10.5, 8 of 10 within 5 rad/s, against -28 to +33 at 500). Only seed 10 is under the
@@ -268,14 +267,14 @@ What happened:
 - **Product reward, seeds 1-10: no better.** 1 despun (s8, -0.4; s1 close at +1.3); 6 hold 7.4;
   s2 never balances, s6 holds 3, s9 holds 4. Worse on the catch than the LQR-cost reward, no better
   on despin. Not pursued.
-- **The part is closed (his call, 10-09).** Result for the statement: under identical limits PPO
+- **The part is closed (decided 10-09).** Result for the statement: under identical limits PPO
   matches LQR at the physical limit (7.46 of 7.48 deg in Lab) and does not beat it; despin
   is unreliable: 2 of 20 seeds at 500 iterations, 1 of 10 at 2000.
 - **Seed 10 at 5000 iterations** (picked as the best seed, so not evidence of a rate): Lab holds
   7.4 deg, arm +0.3 rad/s from every lean (2000 its: +0.2, so no change). ROS harness: recovers
   6.33, falls 6.375 deg (repeat recovered at 6.375, so the edge is fuzzy), despun to +0.2-0.3 rad/s
   every recovery. The same bracket as the 500-iteration seed 10 through ROS, and ~0.7 deg below LQR's
-  7.03. The extra training bought nothing measurable. His prediction: stays despun (right),
+  7.03. The extra training bought nothing measurable. Prediction: stays despun (right),
   marginally better (no), ROS ~7.03 like LQR (no, 6.33).
 
 ## 2026-10-10: why ROS read lower than Lab. A harness bug, now fixed
@@ -297,10 +296,10 @@ What happened:
 - **Loop lag is real but harmless here.** Backing the applied torque out of the arm's acceleration
   (I_a x d(w_arm + w_base)/dt, so not trusting the harness's own command log, which ran up to
   75 ms late) shows commands act on state 3 physics steps (12.5 ms) old, cleanly for LQR and
-  lr_s1. With the hold in place it costs < 0.05 deg. My Lab delay test (1 step: 7.05 deg) was
+  lr_s1. With the hold in place it costs < 0.05 deg. The Lab delay test (1 step: 7.05 deg) was
   confounded: `ActionDelay` starts with zeros, so it added 8.3 ms of dead time at release, which
   is the same mistake as the bug.
-- **His prediction for lr5k_s10** ("stays despun, marginally better, ROS around the same as LQR"):
+- **Prediction for lr5k_s10** ("stays despun, marginally better, ROS around the same as LQR"):
   right on all three once the harness is fixed (7.36 -> 7.45 deg in ROS, equal to LQR). Against the
   broken harness it looked wrong.
 - **Every harness number before commit 4f87e24 is affected**, including LQR 7.03 (10-05), the R
