@@ -1,4 +1,5 @@
-# Adapted from Isaac Lab's cartpole rsl_rl config. Untuned placeholders apart from gamma and normalization.
+# Adapted from Isaac Lab's cartpole rsl_rl config. Changed from it: gamma, normalization, and a fixed
+# learning rate. Everything else is cartpole's. These defaults are the final 10-09 configuration.
 
 from isaaclab.utils import configclass
 
@@ -28,8 +29,10 @@ class PendulumPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         num_learning_epochs=5,
         num_mini_batches=4,
         learning_rate=1.0e-3,
-        schedule="adaptive",
-        gamma=0.995,
+        # "adaptive" (cartpole's) raised the rate to 10x when the policy converged, and one large
+        # update then broke the critic (value loss 5 -> 775); fixed 1e-3: no crash in 10 seeds
+        schedule="fixed",
+        gamma=0.997,
         lam=0.95,
         desired_kl=0.01,
         max_grad_norm=1.0,
