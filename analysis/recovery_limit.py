@@ -66,7 +66,10 @@ A_eq = rows[N, end, :]
 b_eq = -x_free[N, end]
 c = np.zeros(N + 1)
 c[N] = -1.0  # maximise theta0
-bounds = [(-args.max_torque, args.max_torque)] * N + [(0, None)]
+# With the motor line, the line itself bounds the torque (up to 2x stall when braking against the
+# spin); a box at 1x stall here would silently remove plugging (it did until 2026-10-11).
+box = 2 * args.max_torque if args.no_load_speed else args.max_torque
+bounds = [(-box, box)] * N + [(0, None)]
 res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
 if not res.success:
     raise SystemExit(res.message)

@@ -78,9 +78,11 @@ for k in range(int(args.seconds * 120)):
     if args.rate:  # pace the loop so the viewer shows it at the requested speed
         time.sleep(max(0.0, t_start + k / 120 / args.rate - time.time()))
     w = obs[:, 2]
-    # command full positive torque (the direction that rights a positive lean); the motor delivers
-    # what its line allows at the current arm speed
-    torque = torch.clamp(torch.full_like(w, args.stall), -args.stall - slope * w, args.stall - slope * w)
+    # full positive voltage (the direction that rights a positive lean); the motor delivers what its
+    # line allows at the current arm speed: up to 2x stall while braking a pre-spun arm (plugging),
+    # stall at rest, falling to 0 at no-load. (Until 2026-10-11 this commanded 1x stall, which
+    # capped plugging at 1x.)
+    torque = torch.clamp(torch.full_like(w, 2 * args.stall), -args.stall - slope * w, args.stall - slope * w)
     for i, ((a, w0), o, u) in enumerate(zip(starts, obs.tolist(), torque.tolist())):
         rows.append((a, w0, k / 120, math.degrees(o[0]), o[1], o[2], u))
     obs, _, _, _, _ = env.step(torque.unsqueeze(1))

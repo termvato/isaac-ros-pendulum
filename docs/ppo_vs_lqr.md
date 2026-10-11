@@ -58,7 +58,8 @@ no training and no seeds.
 
 - **7.47 deg**, whether or not the arm must also end despun (despin costs nothing).
 - Remove the arm speed limit: 19.5 deg (the torque-only bound, also by hand). Double the torque:
-  only 8.35 deg. The speed limit is what binds, as measured on LQR in September.
+  only 8.35 deg; remove the torque limit entirely: 9.15 deg. The speed limit is what binds. LQR
+  on the fixed harness reaches 8.344 deg at double torque and 8.906 deg with no torque limit.
 - Not in the bound: sin(theta) vs theta (~0.3% at 8 deg) and how PhysX handles the speed limit.
 
 ## Results
@@ -114,7 +115,7 @@ Each change was one variable, with a prediction written first.
 | Potential-based shaping on arm speed (Ng et al. 1999), k = 0.001 to 0.25 | no despin; larger k weakens the catch; k = 0.25 never balances |
 | The same shaping, gated to near upright | never balances: rewarded leaving upright with a spinning arm (a design error) |
 | Multiplicative reward, DeepMind Control Suite style | 1 of 10 despun, catch worse |
-| 2000 and 5000 iterations | catch converges; despin 1 of 10 |
+| 2000 iterations (10 seeds), 5000 (seed 10 only) | catch converges; despin 1 of 10 at 2000; seed 10 stays despun at 5000 |
 
 The common thread: every catch must spin the arm up, so any reward on arm speed either bills
 the catch or, gated, pays for abandoning upright.

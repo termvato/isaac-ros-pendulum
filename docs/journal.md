@@ -19,7 +19,8 @@ is; this file says how it got that way. Newest entries at the bottom.
   intended torque budget without complaint, so the clamp lives in the controller.
 - **The design is speed-limited, not torque-limited.** Peak arm speed is ~1265 x initial lean
   (rad/s per rad) whatever the motor, so arm saturation starts at ~4.5 deg for any torque
-  limit. Halving the motor twice cost only 1.4 deg of recoverable lean.
+  limit. Going from no torque limit to 0.025 N.m cost only 1.4 deg of recoverable lean (hand
+  sweeps; on the fixed harness, 10-11, it is 8.91 to 7.45 deg).
 - PD never despins the arm, so each recovery leaves momentum for the next one; it fell at
   4 deg because it started already spun up. That is the case for feeding arm speed back.
 - Logged sim timing is exact (120.000 Hz in sim time); real hardware will jitter.
@@ -323,3 +324,26 @@ What happened:
 - **Kept in this repo, not split out.** The comparison's credibility rests on this repo's harness,
   URDF and ROS nodes; a learned controller running unchanged behind the same interface is the
   interface's strongest demonstration.
+
+## 2026-10-11: README statements checked against the data
+
+- **"Cutting the motor torque to a quarter costs only 1 degree" was not something any table
+  showed** (the settings were none, 0.05 and 0.025 N.m). Replaced with what the data says.
+- **LQR at 0.05 N.m and with no torque limit, re-bisected on the fixed harness:** 8.344 / 8.391
+  and 8.906 / 8.953 deg, repeats agree. Physical limits 8.35 and 9.15 deg. At 0.05 N.m LQR is
+  again at the limit; with no limit it is 0.24 deg short. The 09-25 hand-sweep numbers (8.0 and
+  8.5 deg "falls at") are superseded. The first no-limit run was discarded: the 0.05 N.m node
+  was still running (killing `ros2 run` leaves the node alive) and two controllers raced on
+  `/joint_command`. `scripts/queue15.sh` now stops every controller between settings.
+- **MRV correction: the pre-spun limit is 5.6 deg, not 4.4.** `recovery_limit.py`'s torque box
+  stayed at 1x stall even with the motor line, so the plugging torque (up to 2x when reversing
+  against a spinning arm) that its docstring promised was never allowed; `rl/mrv_bench.py`
+  commanded exactly 1x stall, the same cap, which is why the two agreed. Both fixed. From rest is
+  unchanged at 2.8 deg. Isaac re-enactment now 2.75 and 5.5 deg. `mrv_bench_prespun.png` redrawn
+  from the corrected run (`analysis/plot_mrv_bench.py`); the four older MRV recovery figures, drawn
+  with the 1x cap and linked from nowhere, were removed.
+- **The bench's 12 deg is not explained by a faster motor alone.** With datasheet torque, no
+  no-load speed gets there (300 rad/s reaches 8.8 deg). 3x the arm inertia reaches 8.0 deg. The
+  motor would need about 2.15x the datasheet's torque and speed together. At the datasheet speed,
+  12 deg needs ~50x stall torque (ceiling 12.4 deg). Planned test: measure the motor's real
+  torque-speed curve at 8 V.

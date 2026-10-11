@@ -84,7 +84,7 @@ class PendulumEnvCfg(DirectRLEnvCfg):
     )
 
     # reset
-    initial_theta_range = [-8.0 * DEG, 8.0 * DEG]  # [rad]; just past the 7.48 deg limit (was 12 until 10-09)
+    initial_theta_range = [-8.0 * DEG, 8.0 * DEG]  # [rad]; just past the 7.47 deg limit (was 12 until 10-09)
     initial_vel_range = [-0.1, 0.1]  # [rad/s], both joints; training only, the harness evaluates from rest
     max_theta = 15.0 * DEG  # training fall threshold [rad]; evaluation uses 45 deg
 

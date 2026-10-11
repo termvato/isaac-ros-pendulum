@@ -13,9 +13,9 @@ robot can lean and still recover, and what limits it.
 
 **Main results:**
 
-- **The design is speed-limited, not torque-limited.** Cutting the motor torque to a quarter
-  costs only 1 degree of recoverable lean. What sets the limit is how fast the reaction arm can
-  spin.
+- **The design is speed-limited, not torque-limited.** Removing the torque limit entirely only
+  raises LQR's recoverable lean from 7.45 to 8.91 deg, and no controller could exceed 9.15 deg
+  even with unlimited torque: the reaction arm's speed limit sets the boundary.
 - **A learned controller cannot beat LQR here.** PPO trained in Isaac Lab and deployed as a
   drop-in ROS 2 node recovers the same 7.45 deg lean as LQR, and a linear program over every
   possible torque sequence shows no controller can recover more than 7.47 deg. PPO is weaker at
@@ -90,24 +90,34 @@ Closed-loop poles: **-33.7** and a near-double pole at **-6.36 +/- 0.04j** rad/s
 
 ## Results
 
-Each run starts upright and applies disturbances on the same grid, from 3.0 deg upward in
-0.5 deg steps, until the first fall. The disturbance is a body disturbance (the pendulum is
-set to an angle), not a torque added to the command, which would be in the controller's own
-input space and test the easy case.
+The LQR boundaries in the table are bisected to 0.05 deg by the harness after its stale-command
+fix (see [Bisected boundary](#bisected-boundary)), and every repeat agreed. The PD result, the
+arm-speed table and the saturation figures below come from earlier hand sweeps: disturbances on
+a 0.5 deg grid from 3.0 deg upward until the first fall, one run per setting, set by hand before
+that fix. The disturbance is a body disturbance (the pendulum is set to an angle), not a torque
+added to the command, which would be in the controller's own input space and test the easy case.
 
-| Controller | Torque limit | Falls at | Arm saturation starts at |
-|---|---|---|---|
-| LQR | none | 8.5 deg | 5.0 deg |
-| LQR | 0.05 N.m | 8.0 deg | 5.0 deg |
-| LQR | 0.025 N.m | 7.5 deg | 5.0 deg |
-| PD (`k_w_arm = 0`) | 0.025 N.m | 4.0 deg (see below) | - |
+| Controller | Torque limit | Recovers | Fails | Physical limit, any controller |
+|---|---|---|---|---|
+| LQR | none | 8.906 deg | 8.953 deg | 9.15 deg |
+| LQR | 0.05 N.m | 8.344 deg | 8.391 deg | 8.35 deg |
+| LQR | 0.025 N.m | 7.453 deg | 7.500 deg | 7.47 deg |
+| PD (`k_w_arm = 0`) | 0.025 N.m | fell at 4.0 deg in a hand sweep (see below) | | |
 
-**Speed-limited, not torque-limited.** Peak arm speed scales with the initial lean at about
-1100 to 1200 rad/s per radian, *whatever the torque limit*. That is momentum the arm must
-absorb, fixed by the physics rather than by the gains. So with a 100 rad/s arm limit,
-saturation always starts near 5 deg. The torque limit only decides how long the arm stays
-saturated, and falls follow sustained saturation (over ~0.4 s), not brief saturation. A
-bigger motor buys almost nothing; a faster or heavier arm is what extends the range.
+"None" means the controller's clamp is set to 1000 N.m (unclamped LQR asks for at most ~2.4 N.m).
+The physical limit is the largest lean any torque sequence could recover under the same torque
+limit and the 100 rad/s arm speed limit, from `analysis/recovery_limit.py` (method in
+[docs/ppo_vs_lqr.md](docs/ppo_vs_lqr.md#the-physical-limit)). PD cannot be bisected: it never
+despins the arm, so it fails the recovery definition at any lean.
+
+**Speed-limited, not torque-limited.** Removing the torque limit entirely raises the physical
+limit only from 7.47 to 9.15 deg, while removing the arm speed limit instead would raise it to
+19.5 deg. In the hand sweeps, peak arm speed scaled with the initial lean at about 1100 to
+1200 rad/s per radian, *whatever the torque limit*. That is momentum the arm must absorb, fixed
+by the physics rather than by the gains, so with a 100 rad/s arm limit saturation starts near
+5 deg. The torque limit only decides how long the arm stays saturated, and falls follow
+sustained saturation (over ~0.4 s), not brief saturation. A faster or heavier arm is what
+extends the range; a bigger motor buys at most 1.7 deg.
 
 **Saturation is survivable, sustained saturation is not.** A saturated arm has zero
 acceleration, so it exerts zero reaction torque on the body and the body falls freely until
@@ -140,14 +150,9 @@ bisects to 0.05 deg. **Recovered** is stricter than "did not fall": the body mus
 0.5 deg of upright **and the arm below 1 rad/s** at the end, because a real pendulum gets
 pushed again and an arm left spinning has less headroom for the next push.
 
-| Controller | Torque limit | Recovers | Fails | Repeat agrees |
-|---|---|---|---|---|
-| LQR | 0.025 N.m | 7.453 deg | 7.500 deg | yes |
-| Physical limit, any controller | 0.025 N.m | 7.47 deg | | |
-
-Every recovery ended with the arm below 0.1 rad/s, so the despin requirement cost LQR nothing.
-The limit comes from `analysis/recovery_limit.py` (see [docs/ppo_vs_lqr.md](docs/ppo_vs_lqr.md)).
-Per-trial data: `results/bisect_hold_lqr_0p025.csv`.
+Results are in the table above. Every LQR recovery ended with the arm below 0.1 rad/s, so the
+despin requirement cost LQR nothing. Per-trial data: `results/bisect_hold_lqr_*.csv` (`0p025`,
+`0p05`, and `1000p0` for no limit).
 
 **The hold is a bug fix.** Before it, a trial began with the previous trial's last command
 still applied for a physics step. After a fall that was a full-torque kick, so each result
@@ -189,6 +194,48 @@ exported to ONNX and run by `pendulum_policy` through the same harness.
   controller as well.
 
 Method, all results, what failed and how to reproduce: [docs/ppo_vs_lqr.md](docs/ppo_vs_lqr.md).
+
+## MRV: an open discrepancy between the model and the robot
+
+The pendulum above is a benchmark. `urdf/mrv.urdf` models MRV itself, pinned at its foot so it
+can only tip about one axis: 358 g measured on a scale, centre of mass 210 mm above the foot,
+each reaction arm carrying two 14.1 g weights 158.5 mm apart. The 50:1 gearmotor is modelled
+by its datasheet torque-speed line scaled to the 8 V supply: 0.0653 N.m at stall, 58.7 rad/s at
+no load, and up to twice stall torque when driven against an arm already spinning the other
+way (plugging).
+
+**Bench test.** MRV's foot sat in a jig with bearings that allowed rotation about one axis
+only, with one arm driving, and the lean read with a protractor. The arm was spun to full speed
+one way, the body was held still at about 12 deg and released, and full voltage was commanded
+the other way. It recovered from **about 12 deg**.
+
+**Model.** The largest lean any controller could recover, by the same linear program as the
+benchmark: **2.8 deg** with the arm starting at rest, **5.6 deg** with it pre-spun as on the
+bench. An open-loop re-enactment in Isaac Lab with full nonlinear physics (`rl/mrv_bench.py`)
+agrees: 2.75 and 5.5 deg. At the datasheet speed, even an infinitely strong motor has a
+momentum ceiling of 12.4 deg (`I_a x 117 rad/s / sqrt(mgl x I_p)`), and getting to 12 deg would
+take about 50 times the stall torque. So no realistic torque explains the bench result at the
+datasheet speed.
+
+![MRV model, pre-spun recoveries from 5.5, 5.75 and 12 deg](results/figures/mrv_bench_prespun.png)
+
+*The bench manoeuvre in Isaac Lab on the MRV model. Plugging gives twice stall torque at first,
+but it fades as the arm passes zero and speeds up. The model recovers 5.5 deg and falls from 5.75;
+from 12 deg it is gone within half a second.*
+
+**What would have to be true.** No single parameter in a plausible range closes the gap:
+
+- **Faster motor, datasheet torque:** not enough at any speed. A 300 rad/s no-load speed (5x)
+  still only reaches 8.8 deg, because torque then binds.
+- **Heavier arm:** 3x the arm inertia reaches 8.0 deg.
+- **Faster and stronger motor together:** about **2.15x the datasheet's torque and speed at once**
+  (126 rad/s no-load, 0.14 N.m stall, as if the motor ran at ~17 V) makes 12 deg possible.
+
+**Unresolved.** The leading hypothesis is that the real motors deliver well beyond the 8 V
+datasheet figures, which come from a single sample tested at 6 V and scaled linearly. The planned
+test is to measure MRV's actual torque-speed curve at 8 V: stall torque and no-load speed. If
+the motor matches the datasheet, the remaining suspects are the bench itself (the protractor
+reading, help from the jig or cable) and the model's mass properties.
 
 ## Watch a recorded run
 
@@ -310,8 +357,9 @@ rviz/                         RViz config
 
 ## Limitations and next steps
 
-- **The bagged sweeps were set by hand** in the Isaac GUI. The harness automates the boundary
-  search, but so far only 0.025 N.m has been bisected.
+- **The bagged sweeps were set by hand** in the Isaac GUI. The harness has since bisected LQR at
+  all three torque settings; the PD figure and the saturation measurements still come from the
+  hand sweeps.
 - **The harness tests release from a held lean, not an unannounced push.** Holding the body
   while the controller reacts gives every controller a correct first command. A push on
   hardware arrives mid-loop, and the 12.5 ms delay then matters more.
